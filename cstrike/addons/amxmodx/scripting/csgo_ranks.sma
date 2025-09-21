@@ -1,26 +1,18 @@
 #include <amxmodx>
 #include <sqlx>
-#include <csx>
-#include <fakemeta>
-#include <hamsandwich>
-#include <nvault>
+#include <reapi>
 #include <csgomod>
 
 #define PLUGIN	"CS:GO Rank System"
-#define AUTHOR	"O'Zone"
+#define AUTHOR	"O'Zone & Czarintax"
 
 #define get_elo(%1,%2) (1.0 / (1.0 + floatpower(10.0, ((%1 - %2) / 400.0))))
-#define set_elo(%1,%2,%3) (%1 + 30.0 * (%2 - %3))
+#define set_elo(%1,%2,%3) (%1 + 7.5 * (%2 - %3))
 
 #define TASK_HUD 7501
 #define TASK_TIME 6701
 
 #define MAX_RANKS 18
-
-#define STATS 1
-#define TEAM_RANK 2
-#define ENEMY_RANK 4
-#define BELOW_HEAD 8
 
 new const rankName[MAX_RANKS + 1][] = {
 	"Unranked",
@@ -53,39 +45,61 @@ new const rankElo[MAX_RANKS + 1] = {
 	160,
 	180,
 	200,
-	215,
 	230,
-	245,
 	260,
-	275,
 	290,
-	315,
-	340,
+	330,
 	370,
 	410,
-	450
+	460,
+	520,
+	580,
+	650,
+	720
 };
-
+#if defined XASH3D
+new const rankColor[MAX_RANKS + 1][] = {
+	^"^7",
+	^"^7",
+	^"^7",
+	^"^7",
+	^"^7",
+	^"^7",
+	^"^7",
+	^"^3",
+	^"^3",
+	^"^3",
+	^"^3",
+	^"^2",
+	^"^2",
+	^"^2",
+	^"^2",
+	^"^4",
+	^"^4",
+	^"^1",
+	^"^6"
+};
+#endif
 stock const yearSeconds[2] =
 {
 	31536000,	// Normal year
-	31622400 	// Leap year
+	31622400	// Leap year
 };
 
 stock const monthSeconds[12] =
 {
-	2678400, // January   31
+	2678400, // January	  31
 	2419200, // February  28
-	2678400, // March     31
-	2592000, // April     30
-	2678400, // May       31
-	2592000, // June      30
-	2678400, // July      31
-	2678400, // August    31
+	2678400, // March	  31
+	2592000, // April	  30
+	2678400, // May		  31
+	2592000, // June	  30
+	2678400, // July	  31
+	2678400, // August	  31
 	2592000, // September 30
 	2678400, // October	  31
 	2592000, // November  30
-	2678400  // December  31
+	2678400	 // December  31
 };
 
 enum timeZones
@@ -183,39 +197,35 @@ stock const daySeconds = 86400;
 stock const hourSeconds = 3600;
 stock const minuteSeconds = 60;
 
-new const commandMenu[][] = { "statsmenu", "menustaty", "say /statsmenu", "say_team /statsmenu", "say /statymenu", "say_team /statymenu",
-	"say /menustaty", "say_team /menustaty" };
-new const commandRank[][] = { "ranga", "say /ranga", "say_team /ranga", "say /myrank", "say_team /myrank" };
-new const commandRanks[][] = { "rangi", "say /rangi", "say_team /rangi", "say /ranks", "say_team /ranks" };
-new const commandTopRanks[][] = { "toprangi", "say /toprangi", "say_team /toprangi", "say /topranks", "say_team /topranks",
-	"say /rangitop15", "say_team /rangitop15", "say /rankstop15", "say_team /rankstop15", "say /rtop15", "say_team /rtop15"};
-new const commandTime[][] = { "czas", "say /czas", "say_team /czas", "say /time", "say_team /time" };
-new const commandTopTime[][] = { "topczas", "say /topczas", "say_team /topczas", "say /toptime", "say_team /toptime", "say /czastop15",
-	"say_team /czastop15", "say /timetop15", "say_team /timetop15", "say /ttop15", "say_team /ttop15", "say /ctop15", "say_team /ctop15" };
-new const commandMedals[][] = { "medale", "say /medale", "say_team /medale", "say /medals", "say_team /medals" };
-new const commandTopMedals[][] = { "topmedale", "say /topmedale", "say_team /topmedale", "say /topmedals", "say_team /topmedals",
-	"say /medalstop15", "say_team /medalstop15", "say /medaletop15", "say_team /medaletop15", "say /mtop15", "say_team /mtop15"};
-new const commandStats[][] = { "staty", "say /staty", "say_team /staty", "say /beststats", "say_team /beststats" };
-new const commandTopStats[][] = { "topstaty", "say /topstaty", "say_team /topstaty", "say /topstats", "say_team /topstats",
-	"say /statytop15", "say_team /statytop15", "say /statstop15", "say_team /statstop15", "say /stop15", "say_team /stop15"};
-new const commandHud[][] = { "hud", "say /hud", "say_team /hud", "say /zmienhud", "say_team /zmienhud", "say /changehud", "say_team /changehud" };
+new const commandMenu[][] = { "say /statsmenu", "say_team /statsmenu" };
+new const commandRank[][] = { "say /rank", "say_team /rank" };
+new const commandRanks[][] = { "say /ranks", "say_team /ranks" };
+new const commandTopRanks[][] = { "say /top15", "say_team /top15" };
+new const commandTime[][] = { "say /time", "say_team /time", "time" };
+new const commandTopTime[][] = { "say /ttop15", "say_team /ttop15" };
+new const commandMedals[][] = { "say /medals", "say_team /medals" };
+new const commandTopMedals[][] = { "say /mtop15", "say_team /mtop15" };
+new const commandStats[][] = { "say /stats", "say_team /stats" };
+new const commandTopStats[][] = { "say /stop15", "say_team /stop15" };
+new const commandHud[][] = { "say /hud", "say_team /hud" };
 
-enum _:playerInfo { KILLS, RANK, TIME, FIRST_VISIT, LAST_VISIT, BRONZE, SILVER, GOLD, MEDALS, BEST_STATS, BEST_KILLS,
-	BEST_DEATHS, BEST_HS, CURRENT_STATS, CURRENT_KILLS, CURRENT_DEATHS, CURRENT_HS, PLAYER_HUD_RED, PLAYER_HUD_GREEN,
-	PLAYER_HUD_BLUE, PLAYER_HUD_POSX, PLAYER_HUD_POSY, Float:ELO_RANK, NAME[32], SAFE_NAME[64], STEAM_ID[35] };
+enum _:playerInfo { KILLS, ASSISTS, DEATHS, HS, RANK, TIME, FIRST_VISIT, LAST_VISIT, BRONZE, SILVER, GOLD, MEDALS, BEST_STATS, BEST_KILLS,
+	BEST_ASSISTS, BEST_HS, BEST_DEATHS, CURRENT_STATS, CURRENT_KILLS, CURRENT_ASSISTS, CURRENT_HS, CURRENT_DEATHS, PLAYER_HUD_RED, PLAYER_HUD_GREEN,
+	PLAYER_HUD_BLUE, PLAYER_HUD_POSX, PLAYER_HUD_POSY, Float:ELO_RANK, NAME[32], SAFE_NAME[64], AUTH_ID[65] };
 enum _:winners { THIRD, SECOND, FIRST };
 
 new playerData[MAX_PLAYERS + 1][playerInfo], sprites[MAX_RANKS + 1], Handle:sql, bool:sqlConnected, bool:mapChange,
-	bool:block, loaded, hudLoaded, visit, hud, aimHUD, defaultInfo, round, hudSite[64], hudAccount, hudClan, hudOperation,
-	iconFlags[8], unrankedKills, saveType, Float:winnerReward;
+	bool:block, loaded, hudLoaded, visit, hud, bool:changeHud[MAX_PLAYERS + 1], hudSite[64], hudAccount, hudClan, hudOperation,
+	unrankedKills, saveType, Float:winnerReward, planter;
 
 public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR);
+	
+	register_dictionary("time.txt");
 
 	bind_pcvar_num(create_cvar("csgo_ranks_unranked_kills", "100"), unrankedKills);
 	bind_pcvar_float(create_cvar("csgo_ranks_winner_reward", "10.0"), winnerReward);
-	bind_pcvar_string(create_cvar("csgo_ranks_icon_flags", "abcd"), iconFlags, charsmax(iconFlags));
 
 	bind_pcvar_string(create_cvar("csgo_ranks_hud_site", ""), hudSite, charsmax(hudSite));
 	bind_pcvar_num(create_cvar("csgo_ranks_hud_account", "0"), hudAccount);
@@ -236,22 +246,20 @@ public plugin_init()
 	for (new i; i < sizeof commandTopStats; i++) register_clcmd(commandTopStats[i], "cmd_topstats");
 	for (new i; i < sizeof commandHud; i++) register_clcmd(commandHud[i], "change_hud");
 
-	RegisterHam(Ham_Spawn, "player", "player_spawn", 1);
-
+	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", 1);
+	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", 0);
+	RegisterHookChain(RG_CSGameRules_PlayerKilled, "CSGameRules_PlayerKilled_Post", 1);
+	RegisterHookChain(RG_CGrenade_ExplodeBomb, "CGrenade_ExplodeBomb", 1);
+	RegisterHookChain(RG_PlantBomb, "PlantBomb", 1);
+	RegisterHookChain(RG_CGrenade_DefuseBombEnd, "CGrenade_DefuseBombEnd", 1);
+	RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", 1);
+	RegisterHookChain(RG_CBasePlayer_AddAccount, "CBasePlayer_AddAccount", 1);
+	
 	register_message(SVC_INTERMISSION, "message_intermission");
 
-	register_event("TextMsg", "restart_round", "a", "2&#Game_C", "2&#Game_w");
-	register_event("HLTV", "new_round", "a", "1=0", "2=0");
-	register_event("TextMsg", "hostages_rescued", "a", "2&#All_Hostages_R");
 	register_event("StatusValue", "show_icon", "be", "1=2", "2!0");
-	register_event("StatusValue", "hide_icon", "be", "1=1", "2=0");
-
-	register_message(get_user_msgid("SayText"), "say_text");
-
-	defaultInfo = get_xvar_id("PlayerName");
 
 	hud = CreateHudSyncObj();
-	aimHUD = CreateHudSyncObj();
 }
 
 public plugin_cfg()
@@ -277,9 +285,12 @@ public plugin_natives()
 {
 	register_native("csgo_add_kill", "_csgo_add_kill", 1);
 	register_native("csgo_get_kills", "_csgo_get_kills", 1);
+	register_native("csgo_add_assist", "_csgo_add_assist", 1);
+	register_native("csgo_get_assists", "_csgo_get_assists", 1);
 	register_native("csgo_get_rank", "_csgo_get_rank", 1);
 	register_native("csgo_get_rank_name", "_csgo_get_rank_name", 1);
 	register_native("csgo_get_current_rank_name", "_csgo_get_current_rank_name", 1);
+	register_native("csgo_get_time", "_csgo_get_time", 1);
 }
 
 public plugin_precache()
@@ -324,9 +335,9 @@ public sql_init()
 
 	new queryData[1024], bool:hasError;
 
-	formatex(queryData, charsmax(queryData), "CREATE TABLE IF NOT EXISTS `csgo_ranks` (`name` VARCHAR(64), `steamid` VARCHAR(35), `kills` INT NOT NULL DEFAULT 0, `rank` INT NOT NULL DEFAULT 0, `time` INT NOT NULL DEFAULT 0, ");
+	formatex(queryData, charsmax(queryData), "CREATE TABLE IF NOT EXISTS `csgo_ranks` (`name` VARCHAR(64), `authid` VARCHAR(65), `kills` INT NOT NULL DEFAULT 0, `assists` INT NOT NULL DEFAULT 0, `deaths` INT NOT NULL DEFAULT 0, `hs` INT NOT NULL DEFAULT 0, `rank` INT NOT NULL DEFAULT 0, `time` INT NOT NULL DEFAULT 0, ");
 	add(queryData, charsmax(queryData), "`firstvisit` INT NOT NULL DEFAULT 0, `lastvisit` INT NOT NULL DEFAULT 0, `gold` INT NOT NULL DEFAULT 0, `silver` INT NOT NULL DEFAULT 0, `bronze` INT NOT NULL DEFAULT 0, `medals` INT NOT NULL DEFAULT 0, ");
-	add(queryData, charsmax(queryData), "`bestkills` INT NOT NULL DEFAULT 0, `bestdeaths` INT NOT NULL DEFAULT 0, `besths` INT NOT NULL DEFAULT 0, `beststats` INT NOT NULL DEFAULT 0, `elorank` double NOT NULL DEFAULT 0, PRIMARY KEY (name, steamid));");
+	add(queryData, charsmax(queryData), "`bestkills` INT NOT NULL DEFAULT 0, `bestassists` INT NOT NULL DEFAULT 0, `bestdeaths` INT NOT NULL DEFAULT 0, `besths` INT NOT NULL DEFAULT 0, `beststats` INT NOT NULL DEFAULT 0, `elorank` double NOT NULL DEFAULT 0, PRIMARY KEY (name, authid));");
 
 	new Handle:query = SQL_PrepareQuery(connectHandle, queryData);
 
@@ -338,7 +349,7 @@ public sql_init()
 		hasError = true;
 	}
 
-	formatex(queryData, charsmax(queryData), "CREATE TABLE IF NOT EXISTS `csgo_hud` (`name` VARCHAR(64), `steamid` VARCHAR(35), `red` INT NOT NULL DEFAULT 0, `green` INT NOT NULL DEFAULT 0, `blue` INT NOT NULL DEFAULT 0, `x` INT NOT NULL DEFAULT 0, `y` INT NOT NULL DEFAULT 0, PRIMARY KEY (name, steamid));");
+	formatex(queryData, charsmax(queryData), "CREATE TABLE IF NOT EXISTS `csgo_hud` (`name` VARCHAR(64), `authid` VARCHAR(65), `red` INT NOT NULL DEFAULT 0, `green` INT NOT NULL DEFAULT 0, `blue` INT NOT NULL DEFAULT 0, `x` INT NOT NULL DEFAULT 0, `y` INT NOT NULL DEFAULT 0, PRIMARY KEY (name, authid));");
 
 	query = SQL_PrepareQuery(connectHandle, queryData);
 
@@ -353,7 +364,9 @@ public sql_init()
 	SQL_FreeHandle(query);
 	SQL_FreeHandle(connectHandle);
 
-	if (!hasError) sqlConnected = true;
+	if (!hasError) {
+		sqlConnected = true;
+	}
 }
 
 public client_putinserver(id)
@@ -374,7 +387,7 @@ public client_putinserver(id)
 
 	if (is_user_bot(id) || is_user_hltv(id)) return;
 
-	get_user_authid(id, playerData[id][STEAM_ID], charsmax(playerData[][STEAM_ID]));
+	get_user_authid(id, playerData[id][AUTH_ID], charsmax(playerData[][AUTH_ID]));
 	get_user_name(id, playerData[id][NAME], charsmax(playerData[][NAME]));
 
 	mysql_escape_string(playerData[id][NAME], playerData[id][SAFE_NAME], charsmax(playerData[][SAFE_NAME]));
@@ -405,7 +418,7 @@ public load_data(id)
 
 	switch (saveType) {
 		case SAVE_NAME: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_ranks` WHERE name = ^"%s^" LIMIT 1;", playerData[id][SAFE_NAME]);
-		case SAVE_STEAM_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_ranks` WHERE `steamid` = ^"%s^" LIMIT 1;", playerData[id][STEAM_ID]);
+		case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_ranks` WHERE `authid` = ^"%s^" LIMIT 1;", playerData[id][AUTH_ID]);
 	}
 
 	SQL_ThreadQuery(sql, "load_data_handle", queryData, playerId, sizeof(playerId));
@@ -423,6 +436,9 @@ public load_data_handle(failState, Handle:query, error[], errorNum, playerId[], 
 
 	if (SQL_NumRows(query)) {
 		playerData[id][KILLS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "kills"));
+		playerData[id][ASSISTS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "assists"));
+		playerData[id][DEATHS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "deaths"));
+		playerData[id][HS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "hs"));
 		playerData[id][RANK] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "rank"));
 		playerData[id][TIME] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "time"));
 		playerData[id][FIRST_VISIT] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "firstvisit"));
@@ -433,8 +449,9 @@ public load_data_handle(failState, Handle:query, error[], errorNum, playerId[], 
 		playerData[id][MEDALS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "medals"));
 		playerData[id][BEST_STATS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "beststats"));
 		playerData[id][BEST_KILLS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "bestkills"));
-		playerData[id][BEST_HS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "besths"));
+		playerData[id][BEST_ASSISTS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "bestassists"));
 		playerData[id][BEST_DEATHS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "bestdeaths"));
+		playerData[id][BEST_HS] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "besths"));
 
 		SQL_ReadResult(query, SQL_FieldNameToNum(query, "elorank"), playerData[id][ELO_RANK]);
 
@@ -442,7 +459,7 @@ public load_data_handle(failState, Handle:query, error[], errorNum, playerId[], 
 	} else {
 		new queryData[256], firstVisit = get_systime();
 
-		formatex(queryData, charsmax(queryData), "INSERT IGNORE INTO `csgo_ranks` (`name`, `steamid`, `firstvisit`, `elorank`) VALUES (^"%s^", ^"%s^", '%i', '%i');", playerData[id][SAFE_NAME], playerData[id][STEAM_ID], firstVisit, rankElo[2]);
+		formatex(queryData, charsmax(queryData), "INSERT INTO `csgo_ranks` (`name`, `authid`, `firstvisit`, `elorank`) VALUES (^"%s^", ^"%s^", '%i', '%i') ON DUPLICATE KEY UPDATE name=name", playerData[id][SAFE_NAME], playerData[id][AUTH_ID], firstVisit, rankElo[2]);
 
 		SQL_ThreadQuery(sql, "ignore_handle", queryData);
 	}
@@ -455,7 +472,7 @@ public load_data_handle(failState, Handle:query, error[], errorNum, playerId[], 
 
 	switch (saveType) {
 		case SAVE_NAME: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_hud` WHERE name = ^"%s^" LIMIT 1;", playerData[id][SAFE_NAME]);
-		case SAVE_STEAM_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_hud` WHERE `steamid` = ^"%s^" LIMIT 1;", playerData[id][STEAM_ID]);
+		case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_hud` WHERE `authid` = ^"%s^" LIMIT 1;", playerData[id][AUTH_ID]);
 	}
 
 	SQL_ThreadQuery(sql, "load_hud_handle", queryData, playerId, sizeof(playerId));
@@ -478,15 +495,15 @@ public load_hud_handle(failState, Handle:query, error[], errorNum, playerId[], d
 		playerData[id][PLAYER_HUD_POSX] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "x"));
 		playerData[id][PLAYER_HUD_POSY] = SQL_ReadResult(query, SQL_FieldNameToNum(query, "y"));
 	} else {
-		new queryData[256];
+		new queryData[512];
 
-		formatex(queryData, charsmax(queryData), "INSERT IGNORE INTO `csgo_hud` (`name`, `steamid`, `red`, `green`, `blue`, `x`, `y`) VALUES (^"%s^", ^"%s^", '%i', '%i', '%i', '%i', '%i');",
-			playerData[id][SAFE_NAME], playerData[id][STEAM_ID], playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], playerData[id][PLAYER_HUD_POSX], playerData[id][PLAYER_HUD_POSY]);
+		formatex(queryData, charsmax(queryData), "INSERT INTO `csgo_hud` (`name`, `authid`, `red`, `green`, `blue`, `x`, `y`) VALUES (^"%s^", ^"%s^", '%i', '%i', '%i', '%i', '%i') ON DUPLICATE KEY UPDATE name=name",
+			playerData[id][SAFE_NAME], playerData[id][AUTH_ID], playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], playerData[id][PLAYER_HUD_POSX], playerData[id][PLAYER_HUD_POSY]);
 
 		SQL_ThreadQuery(sql, "ignore_handle", queryData);
 	}
 
-	if (!task_exists(id + TASK_HUD)) set_task(0.1, "display_hud", id + TASK_HUD, .flags = "b");
+	if (!task_exists(id + TASK_HUD)) set_task(1.0, "display_hud", id + TASK_HUD, .flags = "b");
 
 	set_bit(id, hudLoaded);
 }
@@ -499,11 +516,11 @@ stock save_data(id, end = 0)
 
 	playerId[0] = id;
 
-	playerData[id][CURRENT_STATS] = playerData[id][CURRENT_KILLS] * 2 + playerData[id][CURRENT_HS] - playerData[id][CURRENT_DEATHS] * 2;
+	playerData[id][CURRENT_STATS] = playerData[id][CURRENT_KILLS] * 3 + playerData[id][CURRENT_HS] * 2 + playerData[id][CURRENT_ASSISTS] - playerData[id][CURRENT_DEATHS] * 2;
 
 	if (playerData[id][CURRENT_STATS] > playerData[id][BEST_STATS]) {
-		formatex(queryDataStats, charsmax(queryDataStats), ", `bestkills` = %d, `besths` = %d, `bestdeaths` = %d, `beststats` = %d",
-			playerData[id][CURRENT_KILLS], playerData[id][CURRENT_HS], playerData[id][CURRENT_DEATHS], playerData[id][CURRENT_STATS]);
+		formatex(queryDataStats, charsmax(queryDataStats), ", `bestkills` = %d, `besths` = %d, `bestassists` = %d, `bestdeaths` = %d, `beststats` = %d",
+			playerData[id][CURRENT_KILLS], playerData[id][CURRENT_ASSISTS], playerData[id][CURRENT_HS], playerData[id][CURRENT_DEATHS], playerData[id][CURRENT_STATS]);
 	}
 
 	new medals = playerData[id][GOLD] * 3 + playerData[id][SILVER] * 2 + playerData[id][BRONZE];
@@ -515,12 +532,12 @@ stock save_data(id, end = 0)
 
 	switch (saveType) {
 		case SAVE_NAME: {
-			formatex(queryData, charsmax(queryData), "UPDATE `csgo_ranks` SET `steamid` = ^"%s^", `kills` = %i, `rank` = %i, `elorank` = %f, `time` = %i, `lastvisit` = %i%s%s WHERE name = ^"%s^" AND `time` <= %i",
-				playerData[id][STEAM_ID], playerData[id][KILLS], playerData[id][RANK], playerData[id][ELO_RANK], time, get_systime(), queryDataStats, queryDataMedals, playerData[id][SAFE_NAME], time);
+			formatex(queryData, charsmax(queryData), "UPDATE `csgo_ranks` SET `authid` = ^"%s^", `kills` = %i, `assists` = %i, `deaths` = %i, `hs` = %i, `rank` = %i, `elorank` = %f, `time` = %i, `lastvisit` = %i%s%s WHERE name = ^"%s^" AND `time` <= %i",
+				playerData[id][AUTH_ID], playerData[id][KILLS], playerData[id][ASSISTS], playerData[id][DEATHS], playerData[id][HS], playerData[id][RANK], playerData[id][ELO_RANK], time, get_systime(), queryDataStats, queryDataMedals, playerData[id][SAFE_NAME], time);
 		}
-		case SAVE_STEAM_ID: {
-			formatex(queryData, charsmax(queryData), "UPDATE `csgo_ranks` SET `name` = ^"%s^", `kills` = %i, `rank` = %i, `elorank` = %f, `time` = %i, `lastvisit` = %i%s%s WHERE steamid = ^"%s^" AND `time` <= %i",
-				playerData[id][SAFE_NAME], playerData[id][KILLS], playerData[id][RANK], playerData[id][ELO_RANK], time, get_systime(), queryDataStats, queryDataMedals, playerData[id][STEAM_ID], time);
+		case SAVE_AUTH_ID: {
+			formatex(queryData, charsmax(queryData), "UPDATE `csgo_ranks` SET `name` = ^"%s^", `kills` = %i, `assists` = %i, `deaths` = %i, `hs` = %i, `rank` = %i, `elorank` = %f, `time` = %i, `lastvisit` = %i%s%s WHERE authid = ^"%s^" AND `time` <= %i",
+				playerData[id][SAFE_NAME], playerData[id][KILLS], playerData[id][ASSISTS], playerData[id][DEATHS], playerData[id][HS], playerData[id][RANK], playerData[id][ELO_RANK], time, get_systime(), queryDataStats, queryDataMedals, playerData[id][AUTH_ID], time);
 		}
 	}
 
@@ -538,7 +555,7 @@ stock save_data(id, end = 0)
 			if (!SQL_Execute(query)) {
 				errorNum = SQL_QueryError(query, error, charsmax(error));
 
-				log_to_file("csgo-error.log", "Save suery nonthreaded failed. [%d] %s", errorNum, error);
+				log_to_file("csgo-error.log", "Save Query Nonthreaded failed. [%d] %s", errorNum, error);
 
 				SQL_FreeHandle(query);
 				SQL_FreeHandle(sqlConnection);
@@ -554,10 +571,17 @@ stock save_data(id, end = 0)
 	if (end) rem_bit(id, loaded);
 }
 
-public ignore_handle(failState, Handle:query, error[], errorCode, data[], dataSize)
+public ignore_handle(failState, Handle:query, error[], errorNum, data[], dataSize)
 {
-	if (failState == TQUERY_CONNECT_FAILED) log_to_file("csgo-error.log", "[CS:GO Ranks] Could not connect to SQL database. [%d] %s", errorCode, error);
-	else if (failState == TQUERY_QUERY_FAILED) log_to_file("csgo-error.log", "[CS:GO Ranks] Query failed. [%d] %s", errorCode, error);
+	if (failState) {
+		if (failState == TQUERY_CONNECT_FAILED) {
+			log_to_file("csgo-error.log", "[CS:GO] Could not connect to SQL database. [%d] %s", errorNum, error);
+		} else if (failState == TQUERY_QUERY_FAILED) {
+			log_to_file("csgo-error.log", "[CS:GO] Query failed. [%d] %s", errorNum, error);
+		}
+	}
+
+	return PLUGIN_CONTINUE;
 }
 
 stock check_rank(id, check = 0)
@@ -576,23 +600,47 @@ stock check_rank(id, check = 0)
 public display_hud(id)
 {
 	id -= TASK_HUD;
-
-	if (!pev_valid(id) || !is_user_connected(id) || is_user_bot(id) || !get_bit(id, hudLoaded) || !csgo_get_hud(id)) return PLUGIN_CONTINUE;
-
-	static address[64], clan[64], operation[64], skin[64], statTrak[64], account[64], weaponStatTrak = -1, target;
+#if defined XASH3D
+	if (!is_entity(id) || !is_user_connected(id)/* || is_user_bot(id)*/ || !get_bit(id, hudLoaded) || !csgo_get_hud(id)) {
+		ShowSyncHudMsg(id, hud, " ");
+		
+		return PLUGIN_CONTINUE;
+	}
+	
+	static address[64], clan[64], operation[64], statTrak[64], account[64], weaponStatTrak = -1, target;
 
 	target = id;
 
 	if (!is_user_alive(id)) {
-		target = pev(id, pev_iuser2);
+		target = get_entvar(id, var_iuser2);
+		
+		set_hudmessage(255, 255, 255, 0.7, 0.25, 3, 0.0, 1.0, 0.0, 0.0, 3);
+	}
+	else
+		set_hudmessage(playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], float(playerData[id][PLAYER_HUD_POSX]) / 100.0, float(playerData[id][PLAYER_HUD_POSY]) / 100.0, changeHud[id] ? 1 : 3, 0.0, 1.0, 0.0, 0.0, 3);
+
+	if (!target || !get_bit(target, loaded)) {
+		ShowSyncHudMsg(id, hud, " ");
+		
+		return PLUGIN_CONTINUE;
+	}
+#else
+	if (!is_entity(id) || !is_user_connected(id) || is_user_bot(id) || !get_bit(id, hudLoaded) || !csgo_get_hud(id)) return PLUGIN_CONTINUE;
+	
+	static address[64], clan[64], operation[64], statTrak[64], account[64], weaponStatTrak = -1, target;
+
+	target = id;
+
+	if (!is_user_alive(id)) {
+		target = get_entvar(id, var_iuser2);
 
 		set_hudmessage(255, 255, 255, 0.7, 0.25, 0, 0.0, 0.3, 0.0, 0.0, 3);
-	} else {
-		set_hudmessage(playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], float(playerData[id][PLAYER_HUD_POSX]) / 100.0, float(playerData[id][PLAYER_HUD_POSY]) / 100.0, 0, 0.0, 0.3, 0.0, 0.0, 3);
 	}
+	else
+		set_hudmessage(playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], float(playerData[id][PLAYER_HUD_POSX]) / 100.0, float(playerData[id][PLAYER_HUD_POSY]) / 100.0, changeHud[id] ? 1 : 0, 0.0, 0.3, 0.0, 0.0, 3);
 
 	if (!target || !get_bit(target, loaded)) return PLUGIN_CONTINUE;
-
+#endif
 	static seconds, minutes, hours;
 
 	seconds = (playerData[target][TIME] + get_user_time(target))
@@ -611,15 +659,12 @@ public display_hud(id)
 
 	csgo_get_user_clan_name(target, clan, charsmax(clan));
 	csgo_get_user_operation_text(target, operation, charsmax(operation));
-	csgo_get_current_skin_name(target, skin, charsmax(skin));
-
-	format(skin, charsmax(skin), "%L", id, "CSGO_RANKS_HUD_SKIN", skin);
 
 	if (hudAccount) {
 		if (csgo_get_user_svip(target)) {
-			formatex(account, charsmax(account), "%L", id, "CSGO_RANKS_HUD_SUPERVIP");
+			formatex(account, charsmax(account), "%L^n", id, "CSGO_RANKS_HUD_SUPERVIP");
 		} else if (csgo_get_user_vip(target)) {
-			formatex(account, charsmax(account), "%L", id, "CSGO_RANKS_HUD_VIP");
+			formatex(account, charsmax(account), "%L^n", id, "CSGO_RANKS_HUD_VIP");
 		} else {
 			formatex(account, charsmax(account), "%L", id, "CSGO_RANKS_HUD_DEFAULT");
 		}
@@ -628,17 +673,25 @@ public display_hud(id)
 	}
 
 	if (hudClan) {
-		format(clan, charsmax(clan), "%L", id, "CSGO_RANKS_HUD_CLAN", clan);
+		if (csgo_get_user_clan(target)) {
+			format(clan, charsmax(clan), "%L", id, "CSGO_RANKS_HUD_CLAN", clan);
+		} else {
+			clan = "";
+		}
 	} else {
 		clan = "";
 	}
-
+	
 	if (hudOperation) {
-		format(operation, charsmax(operation), "%L", id, "CSGO_RANKS_HUD_OPERATION", operation);
+		if (csgo_get_user_operation(target) > -1) {
+			format(operation, charsmax(operation), "%L", id, "CSGO_RANKS_HUD_OPERATION", operation);
+		} else {
+			operation = "";
+		}
 	} else {
 		operation = "";
 	}
-
+	
 	if (strlen(hudSite)) {
 		formatex(address, charsmax(address), "%L", id, "CSGO_RANKS_HUD_SITE", hudSite);
 	} else {
@@ -654,52 +707,53 @@ public display_hud(id)
 	}
 
 	if (!playerData[target][RANK]) {
-		ShowSyncHudMsg(id, hud, "%L", id, "CSGO_RANKS_HUD_NO_RANK", address, account, clan, rankName[playerData[target][RANK]], playerData[target][KILLS], unrankedKills, skin, statTrak, csgo_get_money(target), operation, hours, minutes, seconds);
+		ShowSyncHudMsg(id, hud, "%L", id, "CSGO_RANKS_HUD_NO_RANK", address, account, clan, rankName[playerData[target][RANK]], playerData[target][KILLS], unrankedKills, statTrak, csgo_get_money(target), operation, hours, minutes, seconds);
 	} else if (playerData[target][RANK] < MAX_RANKS) {
-		ShowSyncHudMsg(id, hud, "%L", id, "CSGO_RANKS_HUD_RANK", address, account, clan, rankName[playerData[target][RANK]], playerData[target][ELO_RANK], rankElo[playerData[target][RANK] + 1], skin, statTrak, csgo_get_money(target), operation, hours, minutes, seconds);
+		ShowSyncHudMsg(id, hud, "%L", id, "CSGO_RANKS_HUD_RANK", address, account, clan, rankName[playerData[target][RANK]], playerData[target][ELO_RANK], rankElo[playerData[target][RANK] + 1], statTrak, csgo_get_money(target), operation, hours, minutes, seconds);
 	} else {
-		ShowSyncHudMsg(id, hud, "%L", id, "CSGO_RANKS_HUD_MAX_RANK", address, account, clan, rankName[playerData[target][RANK]], playerData[target][ELO_RANK], skin, statTrak, csgo_get_money(target), operation, hours, minutes, seconds);
+		ShowSyncHudMsg(id, hud, "%L", id, "CSGO_RANKS_HUD_MAX_RANK", address, account, clan, rankName[playerData[target][RANK]], playerData[target][ELO_RANK], statTrak, csgo_get_money(target), operation, hours, minutes, seconds);
 	}
 
 	return PLUGIN_CONTINUE;
 }
 
-public player_spawn(id)
+public CBasePlayer_Spawn_Post(id)
 {
-	if (!is_user_alive(id)) return;
-
+	if (!is_user_alive(id))
+		return HC_CONTINUE;
+#if defined XASH3D
+	if (task_exists(id + TASK_HUD)) {
+		remove_task(id + TASK_HUD);
+		ClearSyncHud(id, hud);
+	
+		set_hudmessage(id, 0, 0, float(playerData[id][PLAYER_HUD_POSX]) / 100.0, float(playerData[id][PLAYER_HUD_POSY]) / 100.0, 0, 0.0, 0.0, 0.0, 0.0, 3);
+		show_hudmessage(id , " ");
+		
+		set_task(1.0, "display_hud", id + TASK_HUD, .flags="b");
+	} else
+		set_task(1.0, "display_hud", id + TASK_HUD, .flags="b");
+#else
 	if (!task_exists(id + TASK_HUD)) set_task(0.1, "display_hud", id + TASK_HUD, .flags="b");
-
+#endif
 	if (!get_bit(id, visit)) set_task(3.0, "check_time", id + TASK_TIME);
 
 	save_data(id);
+	
+	return HC_CONTINUE;
 }
 
-public first_round()
-	block = false;
-
-public restart_round()
-	round = 0;
-
-public new_round()
+public CSGameRules_RestartRound_Pre()
 {
-	if (mapChange) return;
-
-	if (!round) {
-		set_task(30.0, "first_round");
-
-		block = true;
-	}
-
-	round++;
+	if (get_member_game(m_bCompleteReset) || mapChange)
+		return HC_CONTINUE;
 
 	new bestId, bestFrags, tempFrags, bestDeaths, tempDeaths;
-
+	
 	for (new id = 1; id <= MAX_PLAYERS; id++) {
 		if (!is_user_connected(id) || is_user_bot(id) || is_user_hltv(id)) continue;
 
-		tempFrags = get_user_frags(id);
-		tempDeaths = get_user_deaths(id);
+		tempFrags = floatround(Float:get_entvar(id, var_frags));
+		tempDeaths = get_member(id, m_iDeaths);
 
 		if (tempFrags > 0 && tempFrags > bestFrags) {
 			bestFrags = tempFrags;
@@ -709,51 +763,72 @@ public new_round()
 	}
 
 	if (is_user_connected(bestId) && bestFrags) {
-		new bestName[64];
-
-		get_user_name(bestId, bestName, charsmax(bestName));
-
 		for (new i = 1; i <= MAX_PLAYERS; i++) {
 			if (!is_user_connected(i) || is_user_hltv(i) || is_user_bot(i)) continue;
-
-			client_print_color(i, bestId, "%L", i, "CSGO_RANKS_CURRENT_LEADER", bestName, bestFrags, bestDeaths);
+#if defined XASH3D
+			client_print(i, print_chat, ^"%L", i, "CSGO_RANKS_CURRENT_LEADER", bestId, bestFrags, bestDeaths);
+#else
+			client_print_color(i, bestId, "%L", i, "CSGO_RANKS_CURRENT_LEADER", bestId, bestFrags, bestDeaths);
+#endif
 		}
 	}
+	
+	return HC_CONTINUE;
 }
 
-public client_death(killer, victim, weapon, hitPlace, TK)
+public CSGameRules_PlayerKilled_Post(victim, killer)
 {
-	if (!is_user_connected(victim) || !is_user_connected(killer) || killer == victim) return;
-
-	playerData[victim][CURRENT_DEATHS]++;
-
-	playerData[killer][CURRENT_KILLS]++;
-	playerData[killer][KILLS]++;
-
-	if (hitPlace == HIT_HEAD) playerData[killer][CURRENT_HS]++;
-
-	if (csgo_get_min_players()) {
-		playerData[killer][ELO_RANK] = _:set_elo(playerData[killer][ELO_RANK], 1.0, get_elo(playerData[victim][ELO_RANK], playerData[killer][ELO_RANK]));
-		playerData[victim][ELO_RANK] = floatmax(1.0, set_elo(playerData[victim][ELO_RANK], 0.0, get_elo(playerData[killer][ELO_RANK], playerData[victim][ELO_RANK])));
+	if (block) return HC_CONTINUE;
+#if defined XASH3D	
+	if (task_exists(victim + TASK_HUD)) {
+		remove_task(victim + TASK_HUD);
+		ClearSyncHud(victim, hud);
+	
+		set_hudmessage(victim, 0, 0, float(playerData[victim][PLAYER_HUD_POSX]) / 100.0, float(playerData[victim][PLAYER_HUD_POSY]) / 100.0, 0, 0.0, 0.0, 0.0, 0.0, 3);
+		show_hudmessage(victim , " ");
+		
+		set_task(1.0, "display_hud", victim + TASK_HUD, .flags="b");
 	}
+#endif
+	if (victim != killer)
+	{
+		playerData[victim][CURRENT_DEATHS]++;
+		playerData[victim][DEATHS]++;
 
-	check_rank(killer);
-	check_rank(victim);
+		playerData[killer][CURRENT_KILLS]++;
+		playerData[killer][KILLS]++;
 
-	client_print_color(victim, killer, "%L", victim, "CSGO_RANKS_KILLED", playerData[killer][NAME], get_user_health(killer));
+		if (get_member(victim, m_bHeadshotKilled)) {
+			playerData[killer][CURRENT_HS]++;
+			playerData[killer][HS]++;
+		}
 
-	if (block) return;
+		if (csgo_get_min_players()) {
+			playerData[killer][ELO_RANK] = _:set_elo(playerData[killer][ELO_RANK], 1.0, get_elo(playerData[victim][ELO_RANK], playerData[killer][ELO_RANK]));
+			playerData[victim][ELO_RANK] = floatmax(1.0, set_elo(playerData[victim][ELO_RANK], 0.0, get_elo(playerData[killer][ELO_RANK], playerData[victim][ELO_RANK])));
+		}
+		
+		check_rank(killer);
+		check_rank(victim);
+#if defined XASH3D
+		client_print(victim, print_chat, ^"%L", victim, "CSGO_RANKS_KILLED", killer, floatround(Float:get_entvar(killer, var_health)));
+#else
+		client_print_color(victim, killer, "%L", victim, "CSGO_RANKS_KILLED", killer, floatround(Float:get_entvar(killer, var_health)));
+#endif
+	}
 
 	new tCount, ctCount, lastT, lastCT;
 
 	for (new i = 1; i <= MAX_PLAYERS; i++) {
 		if (!is_user_alive(i)) continue;
 
-		switch (get_user_team(i)) {
-			case 1: {
+		new TeamName:team = get_member(i, m_iTeam);
+		
+		switch (team) {
+			case TEAM_TERRORIST: {
 				tCount++;
 				lastT = i;
-			} case 2: {
+			} case TEAM_CT: {
 				ctCount++;
 				lastCT = i;
 			}
@@ -768,28 +843,30 @@ public client_death(killer, victim, weapon, hitPlace, TK)
 
 		for (new i = 1; i <= MAX_PLAYERS; i++) {
 			if (!is_user_connected(i) || is_user_hltv(i) || is_user_bot(i)) continue;
-
-			set_dhudmessage(255, 128, 0, -1.0, 0.30, 0, 5.0, 5.0, 0.5, 0.15);
-			show_dhudmessage(i, "%L", i, "CSGO_RANKS_VS_NAMES", nameT, nameCT);
+			
+			set_hudmessage(255, 128, 0, -1.0, 0.30, 0, 5.0, 5.0, 0.5, 0.15);
+			show_hudmessage(i, "%L", i, "CSGO_RANKS_VS_NAMES", nameT, nameCT);
 		}
 	} else if (tCount == 1 && ctCount > 1) {
 		for (new i = 1; i <= MAX_PLAYERS; i++) {
 			if (!is_user_connected(i) || is_user_hltv(i) || is_user_bot(i)) continue;
 
-			set_dhudmessage(255, 128, 0, -1.0, 0.30, 0, 5.0, 5.0, 0.5, 0.15);
-			show_dhudmessage(i, "%L", i, "CSGO_RANKS_VS_NUMBERS", tCount, ctCount);
+			set_hudmessage(255, 128, 0, -1.0, 0.30, 0, 5.0, 5.0, 0.5, 0.15);
+			show_hudmessage(i, "%L", i, "CSGO_RANKS_VS_NUMBERS", tCount, ctCount);
 		}
 	} else if (tCount > 1 && ctCount == 1) {
 		for (new i = 1; i <= MAX_PLAYERS; i++) {
 			if (!is_user_connected(i) || is_user_hltv(i) || is_user_bot(i)) continue;
 
-			set_dhudmessage(255, 128, 0, -1.0, 0.30, 0, 5.0, 5.0, 0.5, 0.15);
-			show_dhudmessage(i, "%L", i, "CSGO_RANKS_VS_NUMBERS", ctCount, tCount);
+			set_hudmessage(255, 128, 0, -1.0, 0.30, 0, 5.0, 5.0, 0.5, 0.15);
+			show_hudmessage(i, "%L", i, "CSGO_RANKS_VS_NUMBERS", ctCount, tCount);
 		}
 	}
+	
+	return HC_CONTINUE;
 }
 
-public bomb_explode(planter, defuser)
+public CGrenade_ExplodeBomb(const this, tracehandle, const bitsDamageType)
 {
 	if (!csgo_get_min_players()) return;
 
@@ -799,26 +876,63 @@ public bomb_explode(planter, defuser)
 	check_rank(planter);
 }
 
-public bomb_defused(defuser)
+public PlantBomb(id, Float:vecStart[3], Float:vecVelocity[3])
 {
-	if (!csgo_get_min_players()) return;
-
-	playerData[defuser][KILLS] += 3;
-	playerData[defuser][ELO_RANK] += 3.0;
-
-	check_rank(defuser);
+	planter = id;
 }
 
-public hostages_rescued()
+public CGrenade_DefuseBombEnd(const this, const id, bool:bDefused)
 {
-	if (!csgo_get_min_players()) return;
+	if (!csgo_get_min_players() || !bDefused) return;
 
-	new rescuer = get_loguser_index();
+	playerData[id][KILLS] += 3;
+	playerData[id][ELO_RANK] += 3.0;
 
-	playerData[rescuer][KILLS] += 3;
-	playerData[rescuer][ELO_RANK] += 3.0;
+	check_rank(id);
+}
 
-	check_rank(rescuer);
+public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event, Float:tmDelay)
+{
+	if(status != WINSTATUS_CTS && status != WINSTATUS_TERRORISTS) {
+		return HC_CONTINUE;
+	}
+	
+	if (!csgo_get_min_players()) {
+		return HC_CONTINUE;
+	}
+	
+	new players[MAX_PLAYERS], num;
+	
+	switch(status) {
+		case WINSTATUS_CTS: get_players(players, num, "ae", "TERRORIST");
+		case WINSTATUS_TERRORISTS: get_players(players, num, "ae", "CT");
+	}
+	
+	for(new i; i < num; i++) {
+		new Float:elo = 3.0;
+		
+		playerData[players[i]][ELO_RANK] -= elo;
+
+		check_rank(players[i]);
+	}
+	
+	return HC_CONTINUE;
+}
+
+public CBasePlayer_AddAccount(const id, amount, RewardType:type, bool:bTrackChange)
+{
+	if (type == RT_HOSTAGE_RESCUED)
+	{
+		if (csgo_get_min_players())
+		{
+			playerData[id][KILLS] += 3;
+			playerData[id][ELO_RANK] += 3.0;
+
+			check_rank(id);
+		}
+	}
+	
+	return HC_CONTINUE;
 }
 
 public check_time(id)
@@ -838,16 +952,27 @@ public check_time(id)
 	new time = get_systime(), visitYear, Year, visitMonth, Month, visitDay, Day, visitHour, visitMinutes, visitSeconds;
 
 	unix_to_time(time, visitYear, visitMonth, visitDay, visitHour, visitMinutes, visitSeconds, UT_TIMEZONE_SERVER);
+#if defined XASH3D
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_HOUR", visitHour, visitMinutes, visitDay, visitMonth, visitYear);
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_HOUR", visitHour, visitMinutes, visitSeconds, visitDay, visitMonth, visitYear);
-
-	if (playerData[id][FIRST_VISIT] == playerData[id][LAST_VISIT]) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_FIRST");
+	if (playerData[id][FIRST_VISIT] == playerData[id][LAST_VISIT]) client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_FIRST", id);
 	else {
 		unix_to_time(playerData[id][LAST_VISIT], Year, Month, Day, visitHour, visitMinutes, visitSeconds, UT_TIMEZONE_SERVER);
 
-		if (visitYear == Year && visitMonth == Month && visitDay == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_TODAY", visitHour, visitMinutes, visitSeconds);
-		else if (visitYear == Year && visitMonth == Month && (visitDay - 1) == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_YESTERDAY", visitHour, visitMinutes, visitSeconds);
-		else client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_BEFORE", visitHour, visitMinutes, visitSeconds, Day, Month, Year);
+		if (visitYear == Year && visitMonth == Month && visitDay == Day) client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_TODAY", id, visitHour, visitMinutes);
+		else if (visitYear == Year && visitMonth == Month && (visitDay - 1) == Day) client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_YESTERDAY", id, visitHour, visitMinutes);
+		else client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_BEFORE", id, visitHour, visitMinutes, Day, Month, Year);
+	}
+#else
+	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_HOUR", visitHour, visitMinutes, visitDay, visitMonth, visitYear);
+
+	if (playerData[id][FIRST_VISIT] == playerData[id][LAST_VISIT]) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_FIRST", id);
+	else {
+		unix_to_time(playerData[id][LAST_VISIT], Year, Month, Day, visitHour, visitMinutes, visitSeconds, UT_TIMEZONE_SERVER);
+
+		if (visitYear == Year && visitMonth == Month && visitDay == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_TODAY", visitHour, visitMinutes);
+		else if (visitYear == Year && visitMonth == Month && (visitDay - 1) == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_YESTERDAY", visitHour, visitMinutes);
+		else client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_BEFORE", visitHour, visitMinutes, Day, Month, Year);
 	}
 }
 
@@ -929,7 +1054,7 @@ public cmd_menu_handle(id, menu, item)
 
 public cmd_ranks(id)
 {
-	new motdTitle[32], motdFile[32];
+	new motdFile[32];
 
 	formatex(motdTitle, charsmax(motdTitle), "%L", id, "CSGO_RANKS_MOTD_TITLE");
 	formatex(motdFile, charsmax(motdFile), "%L", id, "CSGO_RANKS_MOTD_FILE");
@@ -941,12 +1066,19 @@ public cmd_ranks(id)
 
 public cmd_rank(id)
 {
+#if defined XASH3D
+	client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_CURRENT_RANK", id, rankName[playerData[id][RANK]]);
+
+	if (playerData[id][RANK] < MAX_RANKS && playerData[id][RANK] > 0) {
+		client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_NEXT_RANK", id, rankElo[playerData[id][RANK] + 1] - playerData[id][ELO_RANK], rankName[playerData[id][RANK] + 1]);
+	}
+#else
 	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_CURRENT_RANK", rankName[playerData[id][RANK]]);
 
 	if (playerData[id][RANK] < MAX_RANKS && playerData[id][RANK] > 0) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_NEXT_RANK", rankName[playerData[id][RANK] + 1], rankElo[playerData[id][RANK] + 1] - playerData[id][ELO_RANK]);
+		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_NEXT_RANK", id, rankElo[playerData[id][RANK] + 1] - playerData[id][ELO_RANK], rankName[playerData[id][RANK] + 1]);
 	}
-
+#endif
 	return PLUGIN_HANDLED;
 }
 
@@ -971,37 +1103,31 @@ public show_topranks(failState, Handle:query, error[], errorNum, playerId[], dat
 		return PLUGIN_HANDLED;
 	}
 
-	static topData[2048], name[32], nick[16], ranks[16], points[16], Float:elo, rank, topLength, place;
+	static topData[2048], name[32], nick[16], points[16], Float:elo, rank, topLength, place;
 
 	topLength = 0, place = 0;
 
 	new id = playerId[0];
 
 	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
-	formatex(ranks, charsmax(ranks), "%L", id, "CSGO_RANKS_TOP_RANK");
+	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_RANKS");
 	formatex(points, charsmax(points), "%L", id, "CSGO_RANKS_TOP_ELO");
 
-	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
-	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %13s %4s^n", "#", nick, ranks, points);
+	topLength = format(topData, charsmax(topData), ^"^0%1s ^3%s - %s%s", "#", nick, name, "^n");
 
 	while (SQL_MoreResults(query)) {
 		place++;
 
 		SQL_ReadResult(query, 0, name, charsmax(name));
 
-		replace_all(name, charsmax(name), "<", "");
-		replace_all(name, charsmax(name), ">", "");
-
 		SQL_ReadResult(query, 1, elo);
 
 		rank = SQL_ReadResult(query, 2);
-
-		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %1s %12.2f^n", place, name, rankName[rank], elo);
-		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %2s %12.2f^n", place, name, rankName[rank], elo);
+		topLength += format(topData[topLength], charsmax(topData) - topLength, ^"^0%1i ^7%s ^0[^7 %s%L ^0] ^2%.2f ^7%s%s", place, name/*, ranks*/, rankColor[rank], id, rankName[rank], elo, points, "^n");
 
 		SQL_NextRow(query);
 	}
-
+	
 	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_RANKS");
 
 	show_motd(id, topData, name);
@@ -1043,10 +1169,13 @@ public show_time(failState, Handle:query, error[], errorNum, playerId[], dataSiz
 		minutes -= 60;
 		hours++;
 	}
-
+#if defined XASH3D
+	client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_TIME_INFO", hours, minutes, seconds);
+	client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_TIME_TOP", rank, players);
+#else
 	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_TIME_INFO", hours, minutes, seconds);
 	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_TIME_TOP", rank, players);
-
+#endif
 	return PLUGIN_HANDLED;
 }
 
@@ -1069,25 +1198,21 @@ public show_toptime(failState, Handle:query, error[], errorNum, playerId[], data
 		return PLUGIN_HANDLED;
 	}
 
-	static topData[2048], name[32], nick[16], time[16], topLength, place, seconds, minutes, hours;
+	static topData[2048], name[32], hTitle[16], topLength, place, seconds, minutes, hours;
 
 	topLength = 0, place = 0;
 
 	new id = playerId[0];
 
-	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
-	formatex(time, charsmax(time), "%L", id, "CSGO_RANKS_TOP_TIME");
+	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_TIME");
+	formatex(hTitle, charsmax(hTitle), "%L", id, "TIME_ELEMENT_HOURS");
 
-	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
-	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %9s^n", "#", nick, time);
+	topLength = format(topData, charsmax(topData), ^"^0%1s ^3%s%s", "#"/*, nick*/, name, "^n");
 
 	while (SQL_MoreResults(query)) {
 		place++;
 
 		SQL_ReadResult(query, 0, name, charsmax(name));
-
-		replace_all(name, charsmax(name), "<", "");
-		replace_all(name, charsmax(name), ">", "");
 
 		seconds = SQL_ReadResult(query, 1);
 		minutes = 0;
@@ -1102,15 +1227,14 @@ public show_toptime(failState, Handle:query, error[], errorNum, playerId[], data
 			minutes -= 60;
 			hours++;
 		}
-
-		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %0ih %1imin %1is^n", place, name, hours, minutes, seconds);
-		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %1ih %1imin %1is^n", place, name, hours, minutes, seconds);
+		
+		topLength += format(topData[topLength], charsmax(topData) - topLength, ^"^0%1i ^7[ ^1%i ^3%s ^7] %s%s", place, hours, hTitle, name, "^n");
 
 		SQL_NextRow(query);
 	}
 
 	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_TIME");
-
+	
 	show_motd(id, topData, name);
 
 	return PLUGIN_HANDLED;
@@ -1138,10 +1262,13 @@ public show_medals(failState, Handle:query, error[], errorNum, playerId[], dataS
 	}
 
 	new id = playerId[0], rank = SQL_ReadResult(query, 0) + 1, players = SQL_ReadResult(query, 1);
-
+#if defined XASH3D
+	client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_INFO", playerData[id][GOLD], playerData[id][SILVER], playerData[id][BRONZE]);
+	client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_TOP", rank, players);
+#else
 	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_INFO", playerData[id][GOLD], playerData[id][SILVER], playerData[id][BRONZE]);
 	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_TOP", rank, players);
-
+#endif
 	return PLUGIN_HANDLED;
 }
 
@@ -1166,40 +1293,35 @@ public show_topmedals(failState, Handle:query, error[], errorNum, playerId[], da
 		return PLUGIN_HANDLED;
 	}
 
-	static topData[2048], name[32], nameTitle[16], sumTitle[16], goldTitle[16], silverTitle[16], bronzeTitle[16], topLength, place, gold, silver, bronze, medals;
+	static topData[2048], name[32], nick[16], sumTitle[16], goldTitle[16], silverTitle[16], bronzeTitle[16], topLength, place, gold, silver, bronze, medals;
 
 	topLength = 0, place = 0;
 
 	new id = playerId[0];
 
-	formatex(nameTitle, charsmax(nameTitle), "%L", id, "CSGO_RANKS_TOP_NICK");
+	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
+	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_MEDALS")
 	formatex(sumTitle, charsmax(sumTitle), "%L", id, "CSGO_RANKS_TOP_SUM");
-	formatex(goldTitle, charsmax(goldTitle), "%L", id, "CSGO_RANKS_TOP_GOLD");
-	formatex(silverTitle, charsmax(silverTitle), "%L", id, "CSGO_RANKS_TOP_SILVER");
-	formatex(bronzeTitle, charsmax(bronzeTitle), "%L", id, "CSGO_RANKS_TOP_BRONZE");
-
-	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
-	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %6s %8s %8s %5s^n", "#", nameTitle, goldTitle, silverTitle, bronzeTitle, sumTitle);
+	formatex(goldTitle, charsmax(goldTitle), "%L", LANG_SERVER, "CSGO_RANKS_TOP_GOLD");
+	formatex(silverTitle, charsmax(silverTitle), "%L", LANG_SERVER, "CSGO_RANKS_TOP_SILVER");
+	formatex(bronzeTitle, charsmax(bronzeTitle), "%L", LANG_SERVER, "CSGO_RANKS_TOP_BRONZE");
+	
+	topLength = format(topData, charsmax(topData), ^"^0%1s ^3%s - %s%s", "#", nick, name, "^n");
 
 	while (SQL_MoreResults(query)) {
 		place++;
 
 		SQL_ReadResult(query, 0, name, charsmax(name));
 
-		replace_all(name, charsmax(name), "<", "");
-		replace_all(name, charsmax(name), ">", "");
-
 		gold = SQL_ReadResult(query, 1);
 		silver = SQL_ReadResult(query, 2);
 		bronze = SQL_ReadResult(query, 3);
 		medals = SQL_ReadResult(query, 4);
-
-		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %2d %7d %8d %7d^n", place, name, gold, silver, bronze, medals);
-		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %3d %7d %8d %7d^n", place, name, gold, silver, bronze, medals);
-
+		topLength += format(topData[topLength], charsmax(topData) - topLength, ^"^0%1i ^7%s ^0[ ^1%d ^3%s, ^1%d ^3%s, ^1%d ^3%s ^0] ( ^3%s: ^1%d ^0)%s", place, name, gold, goldTitle, silver, silverTitle, bronze, bronzeTitle, sumTitle, medals, "^n");
+		
 		SQL_NextRow(query);
 	}
-
+	
 	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_MEDALS");
 
 	show_motd(id, topData, name);
@@ -1213,7 +1335,7 @@ public cmd_stats(id)
 
 	playerId[0] = id;
 
-	playerData[id][CURRENT_STATS] = playerData[id][CURRENT_KILLS]*2 + playerData[id][CURRENT_HS] - playerData[id][CURRENT_DEATHS]*2;
+	playerData[id][CURRENT_STATS] = playerData[id][CURRENT_KILLS]*3 + playerData[id][CURRENT_HS]*2 + playerData[id][CURRENT_ASSISTS] - playerData[id][CURRENT_DEATHS]*2;
 
 	formatex(queryData, charsmax(queryData), "SELECT rank, count FROM (SELECT COUNT(*) as count FROM `csgo_ranks`) a CROSS JOIN (SELECT COUNT(*) as rank FROM `csgo_ranks` WHERE `beststats` > '%i' ORDER BY `beststats` DESC) b",
 		playerData[id][CURRENT_STATS] > playerData[id][BEST_STATS] ? playerData[id][CURRENT_STATS] : playerData[id][BEST_STATS]);
@@ -1232,12 +1354,17 @@ public show_stats(failState, Handle:query, error[], errorNum, playerId[], dataSi
 	}
 
 	new id = playerId[0], rank = SQL_ReadResult(query, 0) + 1, players = SQL_ReadResult(query, 1);
+#if defined XASH3D
+	if (playerData[id][CURRENT_STATS] > playerData[id][BEST_STATS]) client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_INFO", playerData[id][CURRENT_KILLS], playerData[id][CURRENT_HS], playerData[id][CURRENT_ASSISTS], playerData[id][CURRENT_DEATHS]);
+	else client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_INFO", playerData[id][BEST_KILLS], playerData[id][BEST_HS], playerData[id][BEST_ASSISTS], playerData[id][BEST_DEATHS]);
 
-	if (playerData[id][CURRENT_STATS] > playerData[id][BEST_STATS]) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_INFO", playerData[id][CURRENT_KILLS], playerData[id][CURRENT_HS], playerData[id][CURRENT_DEATHS]);
-	else client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_INFO", playerData[id][BEST_KILLS], playerData[id][BEST_HS], playerData[id][BEST_DEATHS]);
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_TOP", rank, players);
+#else
+	if (playerData[id][CURRENT_STATS] > playerData[id][BEST_STATS]) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_INFO", playerData[id][CURRENT_KILLS], playerData[id][CURRENT_HS], playerData[id][CURRENT_ASSISTS], playerData[id][CURRENT_DEATHS]);
+	else client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_INFO", playerData[id][BEST_KILLS], playerData[id][BEST_HS], playerData[id][BEST_ASSISTS], playerData[id][BEST_DEATHS]);
 
 	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_STATS_TOP", rank, players);
-
+#endif
 	return PLUGIN_HANDLED;
 }
 
@@ -1247,7 +1374,7 @@ public cmd_topstats(id)
 
 	playerId[0] = id;
 
-	format(queryData, charsmax(queryData), "SELECT name, bestkills, besths, bestdeaths FROM `csgo_ranks` ORDER BY beststats DESC LIMIT 15");
+	format(queryData, charsmax(queryData), "SELECT name, bestkills, besths, bestassists, bestdeaths FROM `csgo_ranks` ORDER BY beststats DESC LIMIT 15");
 
 	SQL_ThreadQuery(sql, "show_topstats", queryData, playerId, sizeof(playerId));
 
@@ -1262,37 +1389,31 @@ public show_topstats(failState, Handle:query, error[], errorNum, playerId[], dat
 		return PLUGIN_HANDLED;
 	}
 
-	static topData[2048], name[32], nick[16], killsTitle[16], deathsTitle[16], topLength, place, kills, headShots, deaths;
+	static topData[2048], name[32], nick[16], topLength, place, kills, headShots, assists, deaths;
 
 	topLength = 0, place = 0;
 
 	new id = playerId[0];
 
 	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
-	formatex(killsTitle, charsmax(killsTitle), "%L", id, "CSGO_RANKS_TOP_KILLS");
-	formatex(deathsTitle, charsmax(deathsTitle), "%L", id, "CSGO_RANKS_TOP_DEATHS");
+	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_STATS");
 
-	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
-	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %19s %4s^n", "#", nick, killsTitle, deathsTitle);
+	topLength = format(topData, charsmax(topData), ^"^0%1s ^3%s - %s%s", "#", nick, name, "^n");
 
 	while (SQL_MoreResults(query)) {
 		place++;
 
 		SQL_ReadResult(query, 0, name, charsmax(name));
 
-		replace_all(name, charsmax(name), "<", "");
-		replace_all(name, charsmax(name), ">", "");
-
 		kills = SQL_ReadResult(query, 1);
 		headShots = SQL_ReadResult(query, 2);
-		deaths = SQL_ReadResult(query, 3);
-
-		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %1d (%i HS) %12d^n", place, name, kills, headShots, deaths);
-		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %2d (%i HS) %12d^n", place, name, kills, headShots, deaths);
+		assists = SQL_ReadResult(query, 3);
+		deaths = SQL_ReadResult(query, 4);
+		topLength += format(topData[topLength], charsmax(topData) - topLength, ^"^0%1i ^7%s ^0[ ^3K: ^5%d ^7/ ^3A: ^2%d ^7/ ^3D: ^1%d ^0] ( ^2%i ^3HS ^0)%s", place, name, kills, assists, deaths, headShots, "^n");
 
 		SQL_NextRow(query);
 	}
-
+	
 	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_STATS");
 
 	show_motd(id, topData, name);
@@ -1300,50 +1421,16 @@ public show_topstats(failState, Handle:query, error[], errorNum, playerId[], dat
 	return PLUGIN_HANDLED;
 }
 
-public hide_icon(id)
-{
-	if (get_xvar_num(defaultInfo)) return;
-
-	ClearSyncHud(id, aimHUD);
-}
-
 public show_icon(id)
 {
 	new target = read_data(2);
 
-	if (!pev_valid(id) || !pev_valid(target) || !is_user_alive(id) || !is_user_alive(target)) return;
+	if (!is_entity(id) || !is_entity(target) || !is_user_alive(id) || !is_user_alive(target)) return;
 
-	new color[2], Float:height, defaultHUD = get_xvar_num(defaultInfo), flags = read_flags(iconFlags), rank = playerData[target][RANK];
+	new rank = playerData[target][RANK];
 
-	if (get_user_team(target) == 1) color[0] = 255;
-	else color[1] = 255;
-
-	if (flags & BELOW_HEAD) height = 0.6;
-	else height = 0.35;
-
-	if (get_user_team(id) == get_user_team(target)) {
-		if (flags && !defaultHUD) {
-			new weaponName[32], weapon = get_user_weapon(target);
-
-			if (weapon) xmod_get_wpnname(weapon, weaponName, charsmax(weaponName));
-
-			set_hudmessage(color[0], 50, color[1], -1.0, height, 1, 0.01, 3.0, 0.01, 0.01);
-
-			if (flags & TEAM_RANK) {
-				if (flags & STATS) ShowSyncHudMsg(id, aimHUD, "%s : %s^n%d HP | %d AP | %s", playerData[target][NAME], rankName[rank], get_user_health(target), get_user_armor(target), weaponName);
-				else ShowSyncHudMsg(id, aimHUD, "%s : %s", playerData[target][NAME], rankName[rank]);
-			} else {
-				if (flags & STATS) ShowSyncHudMsg(id, aimHUD, "%s^n%d HP | %d AP | %s", playerData[target][NAME], get_user_health(target), get_user_armor(target), weaponName);
-				else ShowSyncHudMsg(id, aimHUD, "%s", playerData[target][NAME]);
-			}
-		}
-
+	if (get_member(id, m_iTeam) == get_member(target, m_iTeam)) {
 		create_attachment(id, target, 45, sprites[rank], 15);
-	} else if (flags && !defaultHUD) {
-		set_hudmessage(color[0], 50, color[1], -1.0, height, 1, 0.01, 3.0, 0.01, 0.01);
-
-		if (flags & ENEMY_RANK) ShowSyncHudMsg(id, aimHUD, "%s : %s", playerData[target][NAME], rankName[rank]);
-		else ShowSyncHudMsg(id, aimHUD, "%s", playerData[target][NAME]);
 	}
 }
 
@@ -1356,7 +1443,7 @@ public message_intermission()
 	for (new id = 1; id <= MAX_PLAYERS; id++) {
 		if (!is_user_connected(id) || is_user_hltv(id) || is_user_bot(id)) continue;
 
-		tempFrags = get_user_frags(id);
+		tempFrags = floatround(Float:get_entvar(id, var_frags));
 
 		if (tempFrags > winnersFrags[THIRD]) {
 			winnersFrags[THIRD] = tempFrags;
@@ -1400,9 +1487,11 @@ public message_intermission()
 
 	for (new id = 1; id <= MAX_PLAYERS; id++) {
 		if (!is_user_connected(id) || is_user_hltv(id) || is_user_bot(id)) continue;
-
+#if defined XASH3D
+		client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_BEST");
+#else
 		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_BEST");
-
+#endif
 		for (new i = 2; i >= 0; i--) {
 			switch (i) {
 				case THIRD: formatex(medal, charsmax(medal), "%L", id, "CSGO_RANKS_MEDALS_BRONZE");
@@ -1411,12 +1500,19 @@ public message_intermission()
 			}
 
 			get_user_name(winnersId[i], playerName, charsmax(playerName));
-
+#if defined XASH3D
+			if (i == FIRST) {
+				client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_BEST_MVP", playerName, winnersFrags[i], medal);
+			} else {
+				client_print(id, print_chat, ^"%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_BEST_EVP", playerName, winnersFrags[i], medal);
+			}
+#else
 			if (i == FIRST) {
 				client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_BEST_MVP", playerName, winnersFrags[i], medal);
 			} else {
 				client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_MEDALS_BEST_EVP", playerName, winnersFrags[i], medal);
 			}
+#endif
 		}
 	}
 
@@ -1429,51 +1525,27 @@ public message_intermission()
 	return PLUGIN_CONTINUE;
 }
 
-public say_text(msgId, msgDest, msgEnt)
-{
-	new id = get_msg_arg_int(1);
-
-	if (is_user_connected(id)) {
-		new tempMessage[192], message[192], playerName[32], chatPrefix[16], stats[8], body[8], rank;
-
-		get_msg_arg_string(2, tempMessage, charsmax(tempMessage));
-		rank = get_user_stats(id, stats, body);
-
-		if (rank > 3) return PLUGIN_CONTINUE;
-
-		switch (rank) {
-			case 1: formatex(chatPrefix, charsmax(chatPrefix), "^4[TOP1]");
-			case 2: formatex(chatPrefix, charsmax(chatPrefix), "^4[TOP2]");
-			case 3: formatex(chatPrefix, charsmax(chatPrefix), "^4[TOP3]");
-		}
-
-		if (!equal(tempMessage, "#Cstrike_Chat_All")) {
-			add(message, charsmax(message), chatPrefix);
-			add(message, charsmax(message), " ");
-			add(message, charsmax(message), tempMessage);
-		} else {
-	        get_user_name(id, playerName, charsmax(playerName));
-
-	        get_msg_arg_string(4, tempMessage, charsmax(tempMessage));
-	        set_msg_arg_string(4, "");
-
-	        add(message, charsmax(message), chatPrefix);
-	        add(message, charsmax(message), "^3 ");
-	        add(message, charsmax(message), playerName);
-	        add(message, charsmax(message), "^1 : ");
-	        add(message, charsmax(message), tempMessage);
-		}
-
-		set_msg_arg_string(2, message);
-	}
-
-	return PLUGIN_CONTINUE;
-}
-
 public change_hud(id)
 {
 	if (!is_user_connected(id) || !get_bit(id, hudLoaded)) return PLUGIN_HANDLED;
 
+	if (is_user_alive(id))
+	{
+		if (!changeHud[id])
+			changeHud[id] = true;
+#if defined XASH3D	
+		if (task_exists(id + TASK_HUD)) {
+			remove_task(id + TASK_HUD);
+			ClearSyncHud(id, hud);
+	
+			set_hudmessage(0, 0, 0, float(playerData[id][PLAYER_HUD_POSX]) / 100.0, float(playerData[id][PLAYER_HUD_POSY]) / 100.0, 0, 0.0, 0.0, 0.0, 0.0, 3);
+			show_hudmessage(id , " ");
+			
+			set_task(0.1, "display_hud", id + TASK_HUD, .flags="b");
+		}
+#endif
+	}
+	
 	new menuData[64], menu;
 
 	formatex(menuData, charsmax(menuData), "%L", id, "CSGO_RANKS_HUD_SETTINGS_TITLE");
@@ -1508,11 +1580,28 @@ public change_hud(id)
 
 public change_hud_handle(id, menu, item)
 {
-	if (!is_user_connected(id)) return PLUGIN_HANDLED;
+	if (!is_user_connected(id))
+		return PLUGIN_HANDLED;
 
 	if (item == MENU_EXIT) {
 		menu_destroy(menu);
-
+		
+		if (is_user_alive(id))
+		{
+			if (changeHud[id])
+				changeHud[id] = false;
+#if defined XASH3D			
+			if (task_exists(id + TASK_HUD)) {
+				remove_task(id + TASK_HUD);
+				ClearSyncHud(id, hud);
+	
+				set_hudmessage(0, 0, 0, float(playerData[id][PLAYER_HUD_POSX]) / 100.0, float(playerData[id][PLAYER_HUD_POSY]) / 100.0, 0, 0.0, 0.0, 0.0, 0.0, 3);
+				show_hudmessage(id , " ");
+			
+				set_task(1.0, "display_hud", id + TASK_HUD, .flags="b");
+			}
+#endif
+		}		
 		return PLUGIN_HANDLED;
 	}
 
@@ -1548,12 +1637,12 @@ public save_hud(id)
 
 	switch (saveType) {
 		case SAVE_NAME: {
-			formatex(tempData, charsmax(tempData), "UPDATE `csgo_hud` SET `red` = '%i', `green` = '%i', `blue` = '%i', `x` = '%i', `y` = '%i', `steamid` = ^"%s^" WHERE `name` = ^"%s^"",
-				playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], playerData[id][PLAYER_HUD_POSX], playerData[id][PLAYER_HUD_POSY], playerData[id][STEAM_ID], playerData[id][NAME]);
+			formatex(tempData, charsmax(tempData), "UPDATE `csgo_hud` SET `red` = '%i', `green` = '%i', `blue` = '%i', `x` = '%i', `y` = '%i', `authid` = ^"%s^" WHERE `name` = ^"%s^"",
+				playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], playerData[id][PLAYER_HUD_POSX], playerData[id][PLAYER_HUD_POSY], playerData[id][AUTH_ID], playerData[id][NAME]);
 		}
-		case SAVE_STEAM_ID: {
-			formatex(tempData, charsmax(tempData), "UPDATE `csgo_hud` SET `red` = '%i', `green` = '%i', `blue` = '%i', `x` = '%i', `y` = '%i', `name` = ^"%s^" WHERE `steamid` = ^"%s^"",
-				playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], playerData[id][PLAYER_HUD_POSX], playerData[id][PLAYER_HUD_POSY], playerData[id][NAME], playerData[id][STEAM_ID]);
+		case SAVE_AUTH_ID: {
+			formatex(tempData, charsmax(tempData), "UPDATE `csgo_hud` SET `red` = '%i', `green` = '%i', `blue` = '%i', `x` = '%i', `y` = '%i', `name` = ^"%s^" WHERE `authid` = ^"%s^"",
+				playerData[id][PLAYER_HUD_RED], playerData[id][PLAYER_HUD_GREEN], playerData[id][PLAYER_HUD_BLUE], playerData[id][PLAYER_HUD_POSX], playerData[id][PLAYER_HUD_POSY], playerData[id][NAME], playerData[id][AUTH_ID]);
 		}
 	}
 
@@ -1566,39 +1655,47 @@ public _csgo_add_kill(id)
 	playerData[id][KILLS]++;
 }
 
+public _csgo_add_assist(id)
+{
+	playerData[id][CURRENT_ASSISTS]++;
+	playerData[id][ASSISTS]++;
+}
+
 public _csgo_get_kills(id)
 	return playerData[id][KILLS];
 
+public _csgo_get_assists(id)
+	return playerData[id][ASSISTS];
+	
+public _csgo_get_deaths(id)
+	return playerData[id][DEATHS];
+	
+public _csgo_get_hs(id)
+	return playerData[id][HS];
+
 public _csgo_get_rank(id)
 	return playerData[id][RANK];
+	
+public _csgo_get_time(id)
+	return playerData[id][TIME];
 
 public _csgo_get_rank_name(rank, dataReturn[], dataLength)
 {
 	param_convert(2);
 
-	formatex(dataReturn, dataLength, rankName[rank]);
+	formatex(dataReturn, dataLength, "%L", LANG_PLAYER, rankName[rank]);
 }
 
 public _csgo_get_current_rank_name(id, dataReturn[], dataLength)
 {
 	param_convert(2);
 
-	formatex(dataReturn, dataLength, rankName[playerData[id][RANK]]);
-}
-
-stock get_loguser_index()
-{
-	new logUser[80], name[32];
-
-	read_logargv(0, logUser, charsmax(logUser));
-	parse_loguser(logUser, name, charsmax(name));
-
-	return get_user_index(name);
+	formatex(dataReturn, dataLength, "%L", id, rankName[playerData[id][RANK]]);
 }
 
 stock create_attachment(id, target, offset, sprite, life)
 {
-	if (!pev_valid(id) || !pev_valid(target) || !is_user_alive(id) || !is_user_alive(target)) return;
+	if (!is_entity(id) || !is_entity(target) || !is_user_alive(id) || !is_user_alive(target)) return;
 
 	message_begin(MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, _, id);
 	write_byte(TE_PLAYERATTACHMENT);
@@ -1719,4 +1816,3 @@ stock is_leap_year(const year)
 {
 	return (((year % 4) == 0) && (((year % 100) != 0) || ((year % 400) == 0)));
 }
-
