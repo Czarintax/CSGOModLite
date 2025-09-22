@@ -8,7 +8,7 @@
 #endif
 
 // Uncomment below to enable xash3d compatibility.
-//#define XASH3D
+#define XASH3D
 
 #define VERSION	"2.5.11-Lite"
 #define CHAT_PREFIX "[CS:GO]"
