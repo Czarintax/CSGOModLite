@@ -13,10 +13,11 @@
 #define ADMIN_FLAG		ADMIN_ADMIN
 #define FIELD_PLAYER	var_iuser3
 #define TASK_DATA		2592
+#define TASK_AD			4234
 
 enum _:playerInfo { Float:MONEY, bool:DATA_LOADED, bool:HUD_BLOCKED, NAME[32], SAFE_NAME[64], AUTH_ID[65], IP[32] };
 
-new playerData[MAX_PLAYERS + 1][playerInfo], Float:killReward, Float:killHSReward, Float:bombReward, Float:defuseReward, Float:hostageReward, Float:winReward,
+new playerData[MAX_PLAYERS + 1][playerInfo], Handle:sql, Handle:connection, saveType, Float:killReward, Float:killHSReward, Float:bombReward, Float:defuseReward, Float:hostageReward, Float:winReward,
 	Float:botMultiplier, Float:vipMultiplier, Float:svipMultiplier, minPlayers, minPlayerFilter, bool:end, bool:sqlConnected, sqlHost[64], sqlUser[64], sqlPassword[64], sqlDatabase[64], resetHandle;
 
 public plugin_init()

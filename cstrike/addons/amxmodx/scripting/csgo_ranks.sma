@@ -974,6 +974,7 @@ public check_time(id)
 		else if (visitYear == Year && visitMonth == Month && (visitDay - 1) == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_YESTERDAY", visitHour, visitMinutes);
 		else client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_BEFORE", visitHour, visitMinutes, Day, Month, Year);
 	}
+#endif	
 }
 
 public cmd_menu(id)
@@ -1054,7 +1055,7 @@ public cmd_menu_handle(id, menu, item)
 
 public cmd_ranks(id)
 {
-	new motdFile[32];
+	new motdTitle[32], motdFile[32];
 
 	formatex(motdTitle, charsmax(motdTitle), "%L", id, "CSGO_RANKS_MOTD_TITLE");
 	formatex(motdFile, charsmax(motdFile), "%L", id, "CSGO_RANKS_MOTD_FILE");

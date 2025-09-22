@@ -141,7 +141,7 @@ public transfer_handle(id)
 		return PLUGIN_HANDLED;
 	}
 
-	new playerName[32], playerIdName[32], playerIdAuth[65];
+	new playerName[32], playerIdName[32];
 
 	get_user_name(id, playerName, charsmax(playerName));
 	get_user_name(transferPlayer[id], playerIdName, charsmax(playerIdName));
