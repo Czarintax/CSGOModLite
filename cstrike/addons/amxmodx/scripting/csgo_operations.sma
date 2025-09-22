@@ -1,6 +1,5 @@
 #include <amxmodx>
-#include <cstrike>
-#include <hamsandwich>
+#include <reapi>
 #include <nvault>
 #include <csgomod>
 
@@ -11,11 +10,9 @@ enum _:operationType { TYPE_NONE, TYPE_KILL, TYPE_HEADSHOT, TYPE_BOMB, TYPE_DAMA
 enum _:playerInfo { PLAYER_ID, PLAYER_TYPE, PLAYER_ADDITIONAL, PLAYER_PROGRESS, PLAYER_NAME[32] };
 enum _:operationsInfo { OPERATION_AMOUNT, OPERATION_TYPE, OPERATION_REWARD };
 
-new const commandQuest[][] = { "say /operation", "say_team /operation", "say /mission", "say_team /mission", "say /operacja", "say_team /operacja", "say /misja", "say_team /misja",
-	"say /misje", "say_team /misje", "say /operacje", "say_team /operacje", "say /operations", "say_team /operations", "say /missions", "say_team /missions", "misje", "operations" };
-new const commandProgress[][] = { "say /progress", "say_team /progress", "say /progres", "say_team /progres", "say /postep", "say_team /postep", "postep" };
-new const commandEnd[][] = { "say /koniec", "say_team /koniec", "say /zakoncz", "say_team /zakoncz", "zakoncz", "say_team /przerwij", "say /przerwij",
-	"say_team /cancel", "say /cancel", "say_team /end", "say /end", "przerwij" };
+new const commandQuest[][] = { "say /operation", "say_team /operation", "say /mission", "say_team /mission", "say /operations", "say_team /operations", "say /missions", "say_team /missions", "operations" };
+new const commandProgress[][] = { "say /progress", "say_team /progress", "progress" };
+new const commandEnd[][] = { "say_team /cancel", "say /cancel", "say_team /end", "say /end" };
 
 new playerData[MAX_PLAYERS + 1][playerInfo], Array:operationList, operations, loaded;
 
@@ -27,13 +24,13 @@ public plugin_init()
 	for(new i; i < sizeof commandProgress; i++) register_clcmd(commandProgress[i], "check_operation");
 	for(new i; i < sizeof commandEnd; i++) register_clcmd(commandEnd[i], "reset_operation");
 
-	RegisterHam(Ham_TakeDamage, "player", "player_take_damage_post", 1);
+	RegisterHookChain(RG_CBasePlayer_TakeDamage, "CBasePlayer_TakeDamage_Post", 1);
 
 	register_logevent("log_event_operation", 3, "1=triggered");
 
 	operations = nvault_open("csgo_operations");
 
-	if (operations == INVALID_HANDLE) set_fail_state("Nie mozna otworzyc pliku csgo_operations.vault");
+	if (operations == INVALID_HANDLE) set_fail_state("Unable to open file csgo_operations.vault");
 
 	operationList = ArrayCreate(operationsInfo);
 }
@@ -174,7 +171,7 @@ public select_operation(id)
 	if (!is_user_connected(id)) return PLUGIN_HANDLED;
 
 	if (playerData[id][PLAYER_TYPE]) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_ALREADY_IN_PROGRESS");
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_ALREADY_IN_PROGRESS");
 
 		return PLUGIN_HANDLED;
 	}
@@ -235,7 +232,7 @@ public select_operation_handle(id, menu, item)
 
 	save_operation(id);
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_STARTED");
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_STARTED");
 
 	menu_destroy(menu);
 
@@ -251,16 +248,16 @@ public client_death(killer, victim, weaponId, hitPlace, teamKill)
 		case TYPE_HEADSHOT: if (hitPlace == HIT_HEAD) add_progress(killer);
 	}
 
-	return HAM_IGNORED;
+	return PLUGIN_CONTINUE;
 }
 
-public player_take_damage_post(victim, inflictor, attacker, Float:damage, damageBits)
+public CBasePlayer_TakeDamage_Post(const victim, pevInflictor, attacker, Float:flDamage)
 {
-	if (!is_user_connected(attacker) || !is_user_connected(victim) || get_user_team(victim) == get_user_team(attacker)) return HAM_IGNORED;
+	if (!is_user_connected(attacker) || !is_user_connected(victim) || get_user_team(victim) == get_user_team(attacker)) return HC_CONTINUE;
 
-	if (playerData[attacker][PLAYER_TYPE] == TYPE_DAMAGE) add_progress(attacker, floatround(damage));
+	if (playerData[attacker][PLAYER_TYPE] == TYPE_DAMAGE) add_progress(attacker, floatround(flDamage));
 
-	return HAM_IGNORED;
+	return HC_CONTINUE;
 }
 
 public log_event_operation()
@@ -290,14 +287,14 @@ public give_reward(id)
 
 	reset_operation(id, 0, 1);
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_COMPLETED", reward);
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_COMPLETED", reward);
 
 	return PLUGIN_HANDLED;
 }
 
 public check_operation(id)
 {
-	if (!playerData[id][PLAYER_TYPE]) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_NONE");
+	if (!playerData[id][PLAYER_TYPE]) client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_NONE");
 	else {
 		new message[128];
 
@@ -309,7 +306,7 @@ public check_operation(id)
 			case TYPE_NONE: formatex(message, charsmax(message), "%L", id, "CSGO_OPERATIONS_TYPE_NONE_INFO");
 		}
 
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_PROGRESS", message);
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_PROGRESS", message);
 	}
 
 	return PLUGIN_HANDLED;
@@ -361,7 +358,7 @@ public reset_operation(id, data, silent)
 
 	if (!data) save_operation(id);
 
-	if (!silent) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_CANCELLED");
+	if (!silent) client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_OPERATIONS_CANCELLED");
 
 	return PLUGIN_HANDLED;
 }
