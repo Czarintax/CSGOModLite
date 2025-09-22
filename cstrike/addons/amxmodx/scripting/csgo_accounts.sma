@@ -1,25 +1,22 @@
 #include <amxmodx>
+#include <reapi>
 #include <sqlx>
-#include <fakemeta>
-#include <hamsandwich>
-#include <fun>
 #include <csgomod>
 
 #define PLUGIN	"CS:GO Accounts"
-#define AUTHOR	"O'Zone"
+#define AUTHOR	"O'Zone & Czarintax"
 
 #define TASK_PASSWORD   1945
 #define TASK_LOAD       2491
 
-enum _:playerInfo { STATUS, FAILS, PASSWORD[32], TEMP_PASSWORD[32], NAME[32], SAFE_NAME[64], STEAM_ID[35] };
-enum _:status { NOT_REGISTERED, NOT_LOGGED, LOGGED, GUEST };
+enum _:playerInfo { STATUS, FAILS, USERNAME[34], PASSWORD[34], TEMP_PASSWORD[34], NAME[32], SAFE_NAME[64], AUTH_ID[65] };
+enum _:status { NOT_REGISTERED, NOT_LOGGED, LOGGED/*, GUEST*/ };
 enum _:queries { UPDATE, INSERT, DELETE };
 
-new const commandAccount[][] = { "say /haslo", "say_team /haslo", "say /password", "say_team /password",
-	"say /konto", "say_team /konto", "say /account", "say_team /account", "konto" };
+new const commandAccount[][] = { "account", "say /account", "say_team /account", "say /register", "say_team /register", };
 
 new playerData[MAX_PLAYERS + 1][playerInfo], setinfo[16], Handle:sql, bool:sqlConnected, dataLoaded, saveType,
-	autoLogin, accountsEnabled, loginMaxTime, passwordMaxFails, passwordMinLength, blockMovement, forwardResult, loginForward, registerForward;
+	autoLogin, accountsEnabled, loginMaxTime, passwordMaxFails, usernameMinLength, passwordMinLength, blockMovement, forwardResult, loginForward, registerForward;
 
 public plugin_init()
 {
@@ -31,20 +28,25 @@ public plugin_init()
 	bind_pcvar_num(create_cvar("csgo_accounts_enabled", "1"), accountsEnabled);
 	bind_pcvar_num(create_cvar("csgo_accounts_login_max_time", "60"), loginMaxTime);
 	bind_pcvar_num(create_cvar("csgo_accounts_password_max_fails", "3"), passwordMaxFails);
+	bind_pcvar_num(create_cvar("csgo_accounts_username_min_length", "5"), passwordMinLength);
 	bind_pcvar_num(create_cvar("csgo_accounts_password_min_length", "5"), passwordMinLength);
 	bind_pcvar_num(create_cvar("csgo_accounts_block_movement", "1"), blockMovement);
 	bind_pcvar_string(create_cvar("csgo_accounts_setinfo", "csgopass"), setinfo, charsmax(setinfo));
 
-	register_clcmd("ENTER_YOUR_PASSWORD", "login_account");
-	register_clcmd("ENTER_SELECTED_PASSWORD", "register_step_one");
-	register_clcmd("REPEAT_SELECTED_PASSWORD", "register_step_two");
+	register_clcmd("ENTER_YOUR_USERNAME", "login_step_one");
+	register_clcmd("ENTER_YOUR_PASSWORD", "login_step_two");
+	register_clcmd("ENTER_SELECTED_USERNAME", "register_step_one");
+	register_clcmd("ENTER_SELECTED_PASSWORD", "register_step_two");
+	register_clcmd("REPEAT_SELECTED_PASSWORD", "register_step_three");
 	register_clcmd("ENTER_CURRENT_PASSWORD", "change_step_one");
 	register_clcmd("ENTER_NEW_PASSWORD", "change_step_two");
 	register_clcmd("REPEAT_NEW_PASSWORD", "change_step_three");
 	register_clcmd("ENTER_YOUR_CURRENT_PASSWORD", "delete_account");
 
-	RegisterHam(Ham_Spawn, "player", "player_spawn", 1);
-	RegisterHam(Ham_CS_Player_ResetMaxSpeed, "player", "block_movement", 1);
+	//RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", 1);
+	
+	//RegisterHookChain(RG_ShowVGUIMenu, "@ShowVGUIMenu_Pre", .post = false);
+	//RegisterHookChain(RG_HandleMenu_ChooseTeam, "@HandleMenu_ChooseTeam_Pre", false);
 
 	loginForward = CreateMultiForward("csgo_user_login", ET_IGNORE, FP_CELL);
 	registerForward = CreateMultiForward("csgo_user_register", ET_IGNORE, FP_CELL);
@@ -78,6 +80,7 @@ public csgo_reset_data()
 
 public client_connect(id)
 {
+	playerData[id][USERNAME] = "";
 	playerData[id][PASSWORD] = "";
 	playerData[id][STATUS] = NOT_REGISTERED;
 	playerData[id][FAILS] = 0;
@@ -87,7 +90,7 @@ public client_connect(id)
 
 	if (is_user_bot(id) || is_user_hltv(id) || !accountsEnabled) return;
 
-	get_user_authid(id, playerData[id][STEAM_ID], charsmax(playerData[][STEAM_ID]));
+	get_user_authid(id, playerData[id][AUTH_ID], charsmax(playerData[][AUTH_ID]));
 	get_user_name(id, playerData[id][NAME], charsmax(playerData[][NAME]));
 
 	mysql_escape_string(playerData[id][NAME], playerData[id][SAFE_NAME], charsmax(playerData[][SAFE_NAME]));
@@ -102,11 +105,48 @@ public client_disconnected(id)
 	remove_task(id);
 }
 
-public player_spawn(id)
+@ShowVGUIMenu_Pre(id, VGUIMenu:menuType, bitsSlots, oldMenu[])
 {
-	if (!accountsEnabled || !is_user_alive(id) || playerData[id][STATUS] >= LOGGED) return;
+	if (menuType != VGUI_Menu_Team)
+		return;
+
+	if (get_member(id, m_iJoiningState) == JOINED)
+		return;
+		
+	if (!accountsEnabled || !is_user_connected(id) || playerData[id][STATUS] >= LOGGED)
+		return;
+	
+	set_member(id, m_bForceShowMenu, true);
+	set_member_game(m_bSkipShowMenu, true);
+
+	SetHookChainArg(3, ATYPE_INTEGER, 1023);
+	SetHookChainArg(4, ATYPE_STRING, "\n");
+	
+	set_task(1.0, "account_menu", id);
+}
+
+@HandleMenu_ChooseTeam_Pre(id, key)
+{
+	if (!accountsEnabled || !is_user_connected(id) || playerData[id][STATUS] >= LOGGED)
+		return HC_CONTINUE;
+
+	SetHookChainReturn(ATYPE_INTEGER, false);
+	return HC_SUPERCEDE;
+}
+
+public CBasePlayer_Spawn_Post(id)
+{
+	if (!accountsEnabled || !is_user_alive(id) || playerData[id][STATUS] >= LOGGED)
+		return HC_CONTINUE;
 
 	account_menu(id);
+	
+	if (!accountsEnabled || !blockMovement || !is_user_alive(id) || is_user_bot(id) || playerData[id][STATUS] >= LOGGED)
+		return HC_CONTINUE;
+
+	set_entvar(id, var_flags, get_entvar(id, var_flags) | FL_FROZEN);
+	
+	return HC_CONTINUE;
 }
 
 public kick_player(id)
@@ -122,23 +162,15 @@ public kick_player(id)
 	server_cmd("kick #%d ^"%s^"", get_user_userid(id), info);
 }
 
-public block_movement(id)
-{
-	if (!accountsEnabled || !blockMovement || !is_user_alive(id) || is_user_bot(id) || playerData[id][STATUS] >= LOGGED) return HAM_IGNORED;
-
-	set_user_maxspeed(id, 0.1);
-
-	return HAM_IGNORED;
-}
-
 public account_menu(id)
 {
-	if (!accountsEnabled || !is_user_connected(id)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || !is_user_connected(id))
+		return PLUGIN_HANDLED;
 
 	if (!get_bit(id, dataLoaded)) {
 		remove_task(id);
 
-		set_task(1.0, "account_menu", id);
+		set_task(0.1, "account_menu", id);
 
 		return PLUGIN_HANDLED;
 	}
@@ -153,15 +185,15 @@ public account_menu(id)
 		case NOT_REGISTERED: formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_STATUS_NOT_REGISTERED");
 		case NOT_LOGGED: formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_STATUS_NOT_LOGGED_IN");
 		case LOGGED: formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_STATUS_LOGGED_IN");
-		case GUEST: formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_STATUS_GUEST");
+		//case GUEST: formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_STATUS_GUEST");
 	}
 
 	formatex(menuData, charsmax(menuData), "%L", id, "CSGO_ACCOUNTS_MENU_TITLE", playerData[id][NAME], title);
-
+	/*
 	if ((playerData[id][STATUS] == NOT_LOGGED || playerData[id][STATUS] == LOGGED) && !get_bit(id, autoLogin)) {
 		format(menuData, charsmax(menuData), "%L", id, "CSGO_ACCOUNTS_MENU_INFO", menuData, setinfo);
 	}
-
+	*/
 	new menu = menu_create(menuData, "account_menu_handle"), callback = menu_makecallback("account_menu_callback");
 
 	formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_LOGIN");
@@ -175,13 +207,13 @@ public account_menu(id)
 
 	formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_DELETE");
 	menu_additem(menu, title, _, _, callback);
-
+	/*
 	formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_LOGIN_GUEST");
 	menu_additem(menu, title, _, _, callback);
-
-	if (playerData[id][STATUS] >= LOGGED) {
-		formatex(title, charsmax(title), "%L", id, "CSGO_MENU_EXIT");
-
+	*/
+	if (playerData[id][STATUS] == LOGGED || playerData[id][STATUS] == NOT_REGISTERED) {
+		formatex(title, charsmax(title), ^"^1%L", id, "CSGO_MENU_EXIT");
+		
 		menu_setprop(menu, MPROP_EXITNAME, title);
 	} else {
 		menu_setprop(menu, MPROP_EXIT, MEXIT_NEVER);
@@ -197,8 +229,9 @@ public account_menu_callback(id, menu, item)
 	switch (item) {
 		case 0: return playerData[id][STATUS] == NOT_LOGGED ? ITEM_ENABLED : ITEM_DISABLED;
 		case 1: return (playerData[id][STATUS] == NOT_REGISTERED || playerData[id][STATUS] == GUEST) ? ITEM_ENABLED : ITEM_DISABLED;
-		case 2, 3: return playerData[id][STATUS] == LOGGED ? ITEM_ENABLED : ITEM_DISABLED;
-		case 4: return playerData[id][STATUS] == NOT_REGISTERED ? ITEM_ENABLED : ITEM_DISABLED;
+		//case 2, 3 : return playerData[id][STATUS] == LOGGED ? ITEM_ENABLED : ITEM_DISABLED;
+		case 2 : return playerData[id][STATUS] == LOGGED ? ITEM_ENABLED : ITEM_DISABLED;
+		case 3: return playerData[id][STATUS] == NOT_REGISTERED ? ITEM_ENABLED : ITEM_DISABLED;
 	}
 
 	return ITEM_ENABLED;
@@ -206,7 +239,8 @@ public account_menu_callback(id, menu, item)
 
 public account_menu_handle(id, menu, item)
 {
-	if (!is_user_connected(id)) return PLUGIN_HANDLED;
+	if (!is_user_connected(id))
+		return PLUGIN_HANDLED;
 
 	if (item == MENU_EXIT) {
 		menu_destroy(menu);
@@ -216,48 +250,37 @@ public account_menu_handle(id, menu, item)
 
 	switch (item) {
 		case 0: {
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_LOGIN_PASSWORD");
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_LOGIN_PASSWORD");
 
 			set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_LOGIN_PASSWORD");
 
 			client_cmd(id, "messagemode ENTER_YOUR_PASSWORD");
 		} case 1: {
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SELECT_PASSWORD");
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SELECT_USERNAME");
 
 			set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
-			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_LOGIN_PASSWORD");
+			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_LOGIN_USERNAME");
 
-			client_cmd(id, "messagemode ENTER_SELECTED_PASSWORD");
+			client_cmd(id, "messagemode ENTER_SELECTED_USERNAME");
 
 			remove_task(id + TASK_PASSWORD);
 		} case 2: {
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_ENTER_CURRENT_PASSWORD");
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_ENTER_CURRENT_PASSWORD");
 
 			set_hudmessage(255, 128, 0, 0.22, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_ENTER_CURRENT_PASSWORD");
 
 			client_cmd(id, "messagemode ENTER_CURRENT_PASSWORD");
 		} case 3: {
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_ENTER_CURRENT_PASSWORD");
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_ENTER_CURRENT_PASSWORD");
 
 			set_hudmessage(255, 128, 0, 0.22, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_ENTER_CURRENT_PASSWORD");
 
 			client_cmd(id, "messagemode ENTER_YOUR_CURRENT_PASSWORD");
-		} case 4: {
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REGISTER_TO");
-
-			set_hudmessage(0, 255, 0, -1.0, 0.9, 0, 0.0, 3.5, 0.0, 0.0);
-			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REGISTER_TO");
-
-			remove_task(id + TASK_PASSWORD);
-
-			playerData[id][STATUS] = GUEST;
-
-			if (is_user_alive(id)) {
-				ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id);
-			}
+		}
+			engclient_cmd(id, "menuselect", "0");
 
 			ExecuteForward(loginForward, forwardResult, id);
 		}
@@ -270,15 +293,18 @@ public account_menu_handle(id, menu, item)
 
 public login_account(id)
 {
-	if (!accountsEnabled || playerData[id][STATUS] != NOT_LOGGED || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || playerData[id][STATUS] != NOT_LOGGED || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new password[34], hash[34];
 
 	read_args(password, charsmax(password));
 
 	remove_quotes(password);
+	
+	hash_string(password, Hash_Md5, hash, charsmax(hash));
 
-	if (!equal(playerData[id][PASSWORD], password)) {
+	if (!equal(playerData[id][PASSWORD], hash)) {
 		if (++playerData[id][FAILS] >= passwordMaxFails) {
 			new info[64];
 
@@ -289,7 +315,7 @@ public login_account(id)
 			return PLUGIN_HANDLED;
 		}
 
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_WRONG_PASSWORD", playerData[id][FAILS], passwordMaxFails);
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_WRONG_PASSWORD", playerData[id][FAILS], passwordMaxFails);
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 
@@ -306,30 +332,75 @@ public login_account(id)
 	remove_task(id + TASK_PASSWORD);
 
 	if (is_user_alive(id)) {
-		ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id);
+		set_entvar(id, var_flags, get_entvar(id, var_flags) | ~FL_FROZEN);
 	}
 
 	ExecuteForward(loginForward, forwardResult, id);
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_LOGIN_SUCCESS");
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_LOGIN_SUCCESS");
 
 	set_hudmessage(0, 255, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 	show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_LOGIN_SUCCESS");
+	
+	client_cmd(id, "setinfo _%s %s", setinfo, password);
+	client_cmd(id, "seta ^"setu _%s^" %s", setinfo, password);
+	
+	engclient_cmd(id, "menuselect", "0");
 
 	return PLUGIN_HANDLED;
 }
 
 public register_step_one(id)
 {
-	if (!accountsEnabled || (playerData[id][STATUS] != NOT_REGISTERED && playerData[id][STATUS] != GUEST) || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || (playerData[id][STATUS] != NOT_REGISTERED) || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new username[34];
+
+	read_args(username, charsmax(username));
+	remove_quotes(username);
+
+	if (strlen(username) < usernameMinLength) {
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_MIN_USERNAME", usernameMinLength);
+
+		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
+		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_MIN_USERNAME", usernameMinLength);
+
+		account_menu(id);
+
+		return PLUGIN_HANDLED;
+	}
+	
+	copy(playerData[id][USERNAME], charsmax(playerData[][USERNAME]), username);
+
+	if(!is_username_exists(id) && !playerData[id][TEMP_PASSWORD]) {
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SELECT_PASSWORD");
+
+		set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
+		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REGISTER_PASSWORD");
+
+		client_cmd(id, "messagemode ENTER_SELECTED_PASSWORD");
+	}
+	else if(!is_username_exists(id) && playerData[id][TEMP_PASSWORD])
+		register_step_three(id);
+	else
+		account_menu(id);
+
+	return PLUGIN_HANDLED;
+}
+
+public register_step_two(id)
+{
+	if (!accountsEnabled || (playerData[id][STATUS] != NOT_REGISTERED) || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
+
+	new password[34];
 
 	read_args(password, charsmax(password));
 	remove_quotes(password);
 
 	if (strlen(password) < passwordMinLength) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_MIN_LENGTH", passwordMinLength);
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_MIN_LENGTH", passwordMinLength);
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_MIN_LENGTH", passwordMinLength);
@@ -341,7 +412,7 @@ public register_step_one(id)
 
 	copy(playerData[id][TEMP_PASSWORD], charsmax(playerData[][TEMP_PASSWORD]), password);
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REPEAT_PASSWORD");
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REPEAT_PASSWORD");
 
 	set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 	show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REPEAT_PASSWORD");
@@ -351,17 +422,18 @@ public register_step_one(id)
 	return PLUGIN_HANDLED;
 }
 
-public register_step_two(id)
+public register_step_three(id)
 {
-	if (!accountsEnabled || (playerData[id][STATUS] != NOT_REGISTERED && playerData[id][STATUS] != GUEST) || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || (playerData[id][STATUS] != NOT_REGISTERED/* && playerData[id][STATUS] != GUEST*/) || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new password[34];
 
 	read_args(password, charsmax(password));
 	remove_quotes(password);
 
 	if (!equal(password, playerData[id][TEMP_PASSWORD])) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_PASSWORD_DIFFER");
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_PASSWORD_DIFFER");
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_PASSWORD_DIFFER");
@@ -373,13 +445,16 @@ public register_step_two(id)
 
 	new menuData[192], title[64];
 
-	formatex(menuData, charsmax(menuData), "%L", id, "CSGO_ACCOUNTS_REGISTER_CONFIRM_TITLE", playerData[id][NAME], playerData[id][TEMP_PASSWORD]);
+	formatex(menuData, charsmax(menuData), "%L", id, "CSGO_ACCOUNTS_REGISTER_CONFIRM_TITLE", playerData[id][USERNAME], playerData[id][TEMP_PASSWORD]);
 
 	new menu = menu_create(menuData, "register_confirmation_handle");
 
 	formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_REGISTER_CONFIRM");
 	menu_additem(menu, title);
 
+	formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_REGISTER_CHANGE_USERNAME");
+	menu_additem(menu, title);
+	
 	formatex(title, charsmax(title), "%L", id, "CSGO_ACCOUNTS_REGISTER_CHANGE_PASSWORD");
 	menu_additem(menu, title);
 
@@ -414,7 +489,7 @@ public register_confirmation_handle(id, menu, item)
 			account_query(id, INSERT);
 
 			if (is_user_alive(id)) {
-				ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id);
+				set_entvar(id, var_flags, get_entvar(id, var_flags) | ~FL_FROZEN);
 			}
 
 			ExecuteForward(registerForward, forwardResult, id);
@@ -422,19 +497,28 @@ public register_confirmation_handle(id, menu, item)
 			set_hudmessage(0, 255, 0, -1.0, 0.9, 0, 0.0, 3.5, 0.0, 0.0);
 			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REGISTER_SUCCESS");
 
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REGISTER_SUCCESS");
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SETINFO_HELP", setinfo, playerData[id][PASSWORD]);
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REGISTER_SUCCESS");
+			//client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SETINFO_HELP", setinfo, playerData[id][PASSWORD]);
 
-			cmd_execute(id, "setinfo _%s %s", setinfo, playerData[id][PASSWORD]);
-			cmd_execute(id, "writecfg %s", setinfo);
+			client_cmd(id, "setinfo _%s %s", setinfo, playerData[id][PASSWORD]);
+			client_cmd(id, "seta ^"setu _%s^" %s", setinfo, playerData[id][PASSWORD]);
+			
+			engclient_cmd(id, "menuselect", "0");
 		} case 1: {
-			client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REGISTER_STARTED");
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SELECT_USERNAME");
 
 			set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
-			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REGISTER_STARTED");
+			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REGISTER_USERNAME");
+
+			client_cmd(id, "messagemode ENTER_SELECTED_USERNAME");
+		} case 2: {
+			client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SELECT_PASSWORD");
+
+			set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
+			show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REGISTER_PASSWORD");
 
 			client_cmd(id, "messagemode ENTER_SELECTED_PASSWORD");
-		} case 2: {
+		} case 3: {
 			account_menu(id);
 		}
 	}
@@ -444,14 +528,18 @@ public register_confirmation_handle(id, menu, item)
 
 public change_step_one(id)
 {
-	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new password[34], hash[34];
 
 	read_args(password, charsmax(password));
+	
 	remove_quotes(password);
+	
+	hash_string(password, Hash_Md5, hash, charsmax(hash));
 
-	if (!equal(playerData[id][PASSWORD], password)) {
+	if (!equal(playerData[id][PASSWORD], hash)) {
 		if (++playerData[id][FAILS] >= passwordMaxFails) {
 			new info[64];
 
@@ -462,7 +550,7 @@ public change_step_one(id)
 			return PLUGIN_HANDLED;
 		}
 
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_WRONG_PASSWORD", playerData[id][FAILS], passwordMaxFails);
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_WRONG_PASSWORD", playerData[id][FAILS], passwordMaxFails);
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_WRONG_PASSWORD");
@@ -472,7 +560,7 @@ public change_step_one(id)
 		return PLUGIN_HANDLED;
 	}
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_ENTER_NEW_PASSWORD");
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_ENTER_NEW_PASSWORD");
 
 	set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 	show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_ENTER_NEW_PASSWORD");
@@ -484,15 +572,19 @@ public change_step_one(id)
 
 public change_step_two(id)
 {
-	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new password[34], hash[34];
 
 	read_args(password, charsmax(password));
+	
 	remove_quotes(password);
+	
+	hash_string(password, Hash_Md5, hash, charsmax(hash));
 
-	if (equal(playerData[id][PASSWORD], password)) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_NEW_MATCHES_OLD");
+	if (equal(playerData[id][PASSWORD], hash)) {
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_NEW_MATCHES_OLD");
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_NEW_MATCHES_OLD");
@@ -503,7 +595,7 @@ public change_step_two(id)
 	}
 
 	if (strlen(password) < passwordMinLength) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_NEW_MIN_LENGTH", passwordMinLength);
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_NEW_MIN_LENGTH", passwordMinLength);
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_NEW_MIN_LENGTH", passwordMinLength);
@@ -515,7 +607,7 @@ public change_step_two(id)
 
 	copy(playerData[id][TEMP_PASSWORD], charsmax(playerData[][TEMP_PASSWORD]), password);
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REPEAT_NEW_PASSWORD");
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_REPEAT_NEW_PASSWORD");
 
 	set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 	show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_REPEAT_NEW_PASSWORD");
@@ -527,15 +619,17 @@ public change_step_two(id)
 
 public change_step_three(id)
 {
-	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new password[34];
 
 	read_args(password, charsmax(password));
+	
 	remove_quotes(password);
 
 	if (!equal(password, playerData[id][TEMP_PASSWORD])) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_PASSWORD_DIFFER");
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_PASSWORD_DIFFER");
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_PASSWORD_DIFFER");
@@ -552,25 +646,29 @@ public change_step_three(id)
 	set_hudmessage(0, 255, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 	show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_PASSWORD_CHANGE_SUCCESS");
 
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_PASSWORD_CHANGE_SUCCESS");
-	client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SETINFO_HELP", setinfo, playerData[id][PASSWORD]);
+	client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_PASSWORD_CHANGE_SUCCESS");
+	//client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_SETINFO_HELP", setinfo, playerData[id][PASSWORD]);
 
-	cmd_execute(id, "setinfo _%s %s", setinfo, playerData[id][PASSWORD]);
-	cmd_execute(id, "writecfg %s", setinfo);
+	client_cmd(id, "setinfo _%s %s", setinfo, playerData[id][PASSWORD]);
+	client_cmd(id, "seta ^"setu _%s^" %s", setinfo, playerData[id][PASSWORD]);
 
 	return PLUGIN_HANDLED;
 }
 
 public delete_account(id)
 {
-	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded)) return PLUGIN_HANDLED;
+	if (!accountsEnabled || playerData[id][STATUS] != LOGGED || !get_bit(id, dataLoaded))
+		return PLUGIN_HANDLED;
 
-	new password[32];
+	new password[34], hash[34];
 
 	read_args(password, charsmax(password));
+	
 	remove_quotes(password);
+	
+	hash_string(password, Hash_Md5, hash, charsmax(hash));
 
-	if (!equal(playerData[id][PASSWORD], password)) {
+	if (!equal(playerData[id][PASSWORD], hash)) {
 		if (++playerData[id][FAILS] >= passwordMaxFails) {
 			new info[64];
 
@@ -581,7 +679,7 @@ public delete_account(id)
 			return PLUGIN_HANDLED;
 		}
 
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_WRONG_PASSWORD", playerData[id][FAILS], passwordMaxFails);
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_WRONG_PASSWORD", playerData[id][FAILS], passwordMaxFails);
 
 		set_hudmessage(255, 0, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
 		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_WRONG_PASSWORD");
@@ -597,13 +695,13 @@ public delete_account(id)
 
 	new menu = menu_create(menuData, "delete_account_handle");
 
-	formatex(title, charsmax(title), "\r%L", id, "CSGO_MENU_YES");
+	formatex(title, charsmax(title), ^"^2%L", id, "CSGO_MENU_YES");
 	menu_additem(menu, title);
 
-	formatex(title, charsmax(title), "\w%L", id, "CSGO_MENU_NO");
+	formatex(title, charsmax(title), ^"^3%L", id, "CSGO_MENU_NO");
 	menu_additem(menu, title);
 
-	formatex(title, charsmax(title), "%L", id, "CSGO_MENU_EXIT");
+	formatex(title, charsmax(title), ^"^1%L", id, "CSGO_MENU_EXIT");
 	menu_setprop(menu, MPROP_EXITNAME, title);
 
 	menu_display(id, menu);
@@ -613,7 +711,8 @@ public delete_account(id)
 
 public delete_account_handle(id, menu, item)
 {
-	if (!is_user_connected(id)) return PLUGIN_HANDLED;
+	if (!is_user_connected(id))
+		return PLUGIN_HANDLED;
 
 	if (item == MENU_EXIT || item) {
 		menu_destroy(menu);
@@ -627,10 +726,10 @@ public delete_account_handle(id, menu, item)
 
 	new info[128];
 
-	console_print(id, "==================================");
-	console_print(id, "==========%L==========", id, "CSGO_ACCOUNTS_CONSOLE_TITLE");
-	console_print(id, "              %L", id, "CSGO_ACCOUNTS_CONSOLE_INFO", playerData[id][NAME]);
-	console_print(id, "==================================");
+	client_print(id, print_console, "==================================");
+	client_print(id, print_console, "==========%L==========", id, "CSGO_ACCOUNTS_CONSOLE_TITLE");
+	client_print(id, print_console, "              %L", id, "CSGO_ACCOUNTS_CONSOLE_INFO", playerData[id][NAME]);
+	client_print(id, print_console, "==================================");
 
 	formatex(info, charsmax(info), "%L", id, "CSGO_ACCOUNTS_DELETED");
 
@@ -660,9 +759,9 @@ public sql_init()
 		return;
 	}
 
-	new queryData[192], bool:hasError;
+	new queryData[512], bool:hasError;
 
-	formatex(queryData, charsmax(queryData), "CREATE TABLE IF NOT EXISTS `csgo_accounts` (`name` VARCHAR(64), `steamid` VARCHAR(35), `pass` VARCHAR(32), PRIMARY KEY(name, steamid));");
+	formatex(queryData, charsmax(queryData), "CREATE TABLE IF NOT EXISTS `csgo_accounts` (`id` int NOT NULL AUTO_INCREMENT, `login` varchar(32) NOT NULL, `password` varchar(32) NOT NULL, `regdate` datetime NOT NULL, `authid` VARCHAR(65), `name` VARCHAR(64), `autologin` int NOT NULL DEFAULT '1', PRIMARY KEY(id));");
 
 	new Handle:query = SQL_PrepareQuery(connection, queryData);
 
@@ -696,7 +795,7 @@ public load_account(id)
 
 	switch (saveType) {
 		case SAVE_NAME: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_accounts` WHERE name = ^"%s^" LIMIT 1;", playerData[id][SAFE_NAME]);
-		case SAVE_STEAM_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_accounts` WHERE steamid = ^"%s^" LIMIT 1;", playerData[id][STEAM_ID]);
+		case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_accounts` WHERE authid = ^"%s^" LIMIT 1;", playerData[id][AUTH_ID]);
 	}
 
 	SQL_ThreadQuery(sql, "load_account_handle", queryData, tempId, sizeof(tempId));
@@ -713,29 +812,29 @@ public load_account_handle(failState, Handle:query, error[], errorNum, tempId[],
 	}
 
 	if (SQL_MoreResults(query)) {
-		SQL_ReadResult(query, SQL_FieldNameToNum(query, "pass"), playerData[id][PASSWORD], charsmax(playerData[][PASSWORD]));
+		SQL_ReadResult(query, SQL_FieldNameToNum(query, "password"), playerData[id][PASSWORD], charsmax(playerData[][PASSWORD]));
 
 		if (playerData[id][PASSWORD][0]) {
-			new password[32], info[32];
+			new password[34], hash[34], info[32];
 
 			formatex(info, charsmax(info), "_%s", setinfo);
 
-			cmd_execute(id, "exec %s.cfg", setinfo);
-
 			get_user_info(id, info, password, charsmax(password));
+			
+			hash_string(password, Hash_Md5, hash, charsmax(hash));
 
-			if (equal(playerData[id][PASSWORD], password)) {
+			if (equal(playerData[id][PASSWORD], hash)) {
 				playerData[id][STATUS] = LOGGED;
 
 				set_bit(id, autoLogin);
 
 				ExecuteForward(loginForward, forwardResult, id);
+				
+				client_cmd(id, "seta ^"setu _%s^" %s", setinfo, password);
 
 			} else {
 				playerData[id][STATUS] = NOT_LOGGED;
 			}
-
-			cmd_execute(id, "exec config.cfg");
 		}
 	}
 
@@ -746,22 +845,24 @@ public account_query(id, type)
 {
 	if (!is_user_connected(id)) return;
 
-	new queryData[192], password[32];
+	new queryData[192], password[34], hash[34];
 
 	mysql_escape_string(playerData[id][PASSWORD], password, charsmax(password));
+	
+	hash_string(password, Hash_Md5, hash, charsmax(hash));
 
 	switch (type) {
-		case INSERT: formatex(queryData, charsmax(queryData), "INSERT INTO `csgo_accounts` (name, steamid, pass) VALUES (^"%s^", ^"%s^", ^"%s^")", playerData[id][SAFE_NAME], playerData[id][STEAM_ID], password);
+		case INSERT: formatex(queryData, charsmax(queryData), "INSERT INTO `csgo_accounts` (name, authid, pass) VALUES (^"%s^", ^"%s^", ^"%s^")", playerData[id][SAFE_NAME], playerData[id][AUTH_ID], hash);
 		case UPDATE: {
 			switch (saveType) {
-				case SAVE_NAME: formatex(queryData, charsmax(queryData), "UPDATE `csgo_accounts` SET pass = '%s', steamid = ^"%s^" WHERE name = ^"%s^"", password, playerData[id][STEAM_ID], playerData[id][SAFE_NAME]);
-				case SAVE_STEAM_ID: formatex(queryData, charsmax(queryData), "UPDATE `csgo_accounts` SET pass = '%s', name = ^"%s^" WHERE steamid = ^"%s^"", password, playerData[id][SAFE_NAME], playerData[id][STEAM_ID]);
+				case SAVE_NAME: formatex(queryData, charsmax(queryData), "UPDATE `csgo_accounts` SET pass = '%s', authid = ^"%s^" WHERE name = ^"%s^"", hash, playerData[id][AUTH_ID], playerData[id][SAFE_NAME]);
+				case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "UPDATE `csgo_accounts` SET pass = '%s', name = ^"%s^" WHERE authid = ^"%s^"", hash, playerData[id][SAFE_NAME], playerData[id][AUTH_ID]);
 			}
 		}
 		case DELETE: {
 			switch (saveType) {
 				case SAVE_NAME: formatex(queryData, charsmax(queryData), "DELETE FROM `csgo_accounts` WHERE name = ^"%s^"", playerData[id][SAFE_NAME]);
-				case SAVE_STEAM_ID: formatex(queryData, charsmax(queryData), "DELETE FROM `csgo_accounts` WHERE steamid = ^"%s^"", playerData[id][STEAM_ID]);
+				case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "DELETE FROM `csgo_accounts` WHERE authid = ^"%s^"", playerData[id][AUTH_ID]);
 			}
 		}
 	}
@@ -786,13 +887,13 @@ public _csgo_check_account(id)
 	}
 
 	if (sql == Empty_Handle) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_DATABASE_ERROR");
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_DATABASE_ERROR");
 
 		return false;
 	}
 
 	if (playerData[id][STATUS] < LOGGED) {
-		client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_LOGIN_FIRST");
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_LOGIN_FIRST");
 
 		account_menu(id);
 
@@ -800,4 +901,30 @@ public _csgo_check_account(id)
 	}
 
 	return true;
+}
+
+stock bool:is_username_exists(id)
+{
+	new value = 0;
+	
+	if(sql == Empty_Handle) {
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_DATABASE_ERROR");
+		
+		return bool:value;
+	}
+	
+	new Handle:query = SQL_PrepareQuery(connection, "SELECT `username` FROM `csgo_accounts` WHERE `username` = '%s'", playerData[id][USERNAME]);
+	
+	if(!SQL_Execute(query) || SQL_NumResults(query)) {
+		client_print(id, print_chat, "%s %L", CHAT_PREFIX, id, "CSGO_ACCOUNTS_USERNAME_EXISTS");
+
+		set_hudmessage(255, 128, 0, 0.24, 0.07, 0, 0.0, 3.5, 0.0, 0.0);
+		show_hudmessage(id, "%L", id, "CSGO_ACCOUNTS_HUD_USERNAME_EXISTS");
+		
+		value = 1
+	}
+	
+	SQL_FreeHandle(query);
+	
+	return bool:value;
 }
