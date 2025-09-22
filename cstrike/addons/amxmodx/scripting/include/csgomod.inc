@@ -64,17 +64,6 @@ native csgo_add_money(id, Float:money);
 native csgo_set_money(id, Float:money);
 
 /**
- * Retrieves location of current player.
- *
- * @param id        Player index
- * @param data      Buffer to copy text to
- * @param lenth     Maximum buffer size
- *
- * @noreturn
- */
-native csgo_get_user_country(id, data[], legth);
-
-/**
  * Returns id of current player operation.
  *
  * @param id        Player index
