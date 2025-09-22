@@ -1,34 +1,25 @@
 #include <amxmodx>
-#include <cstrike>
-#include <engine>
-#include <fun>
-#include <hamsandwich>
-#include <fakemeta>
+#include <reapi>
 #include <csgomod>
 
-#define PLUGIN	"CS:GO VIP and SVIP"
-#define AUTHOR	"O'Zone"
+#define PLUGIN	"CS:GO VIP & SVIP"
+#define AUTHOR	"O'Zone & Czarintax"
 
 #define ADMIN_FLAG_X (1<<23)
 
 new Array:VIPs, Array:SVIPs, bool:used[MAX_PLAYERS + 1], bool:disabled, roundNum = 0,
-	VIP, SVIP, smallMaps, prefixEnabled, freeType, freeEnabled, freeFrom, freeTo;
+	VIP, SVIP, smallMaps, freeType, freeEnabled, freeFrom, freeTo;
 
-new const commandVIPs[][] = { "vips", "say /vips", "say_team /vips", "say /vipy", "say_team /vipy" };
-new const commandSVIPs[][] = { "svips", "say /svips", "say_team /svips", "say /svipy", "say_team /svipy" };
+new const commandVIPs[][] = { "vips", "say /vips", "say_team /vips" };
+new const commandSVIPs[][] = { "svips", "say /svips", "say_team /svips" };
 new const commandVIPMotd[][] = { "vip", "say /vip", "say_team /vip" };
 new const commandSVIPMotd[][] = { "svip", "say /svip", "say_team /svip", "say /supervip", "say_team /supervip" };
-
-new const zeusWeaponName[] = "weapon_p228";
 
 new disallowedWeapons[] = { CSW_XM1014, CSW_MAC10, CSW_AUG, CSW_M249, CSW_GALIL, CSW_AK47, CSW_M4A1, CSW_AWP,
 	CSW_SG550, CSW_G3SG1, CSW_UMP45, CSW_MP5NAVY, CSW_FAMAS, CSW_SG552, CSW_TMP, CSW_P90, CSW_M3 };
 
 enum { ammo_none, ammo_338magnum = 1, ammo_762nato, ammo_556natobox, ammo_556nato, ammo_buckshot, ammo_45acp,
 	ammo_57mm, ammo_50ae, ammo_357sig, ammo_9mm, ammo_flashbang, ammo_hegrenade, ammo_smokegrenade, ammo_c4 };
-
-new const maxBPAmmo[] = { 0, 30, 90, 200, 90, 32, 100, 100, 35, 52, 120, 2, 1, 1, 1 };
-new const weaponSlots[] = { -1, 2, -1, 1, 4, 1, 5, 1, 1, 4, 2, 2, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 4, 2, 1, 1, 3, 1 };
 
 enum _:{ PRIMARY = 1, SECONDARY, KNIFE, GRENADES, C4 };
 enum _:{ FREE_NONE, FREE_HOURS, FREE_ALWAYS };
@@ -41,7 +32,6 @@ public plugin_init()
 	register_plugin(PLUGIN, VERSION, AUTHOR);
 
 	bind_pcvar_num(register_cvar("csgo_vip_svip_small_maps", "0"), smallMaps);
-	bind_pcvar_num(register_cvar("csgo_vip_svip_prefix_enabled", "1"), prefixEnabled);
 	bind_pcvar_num(register_cvar("csgo_vip_svip_free_enabled", "0"), freeEnabled);
 	bind_pcvar_num(register_cvar("csgo_vip_svip_free_type", "0"), freeType);
 	bind_pcvar_num(register_cvar("csgo_vip_svip_free_from", "23"), freeFrom);
@@ -54,14 +44,10 @@ public plugin_init()
 
 	register_clcmd("say_team", "handle_say");
 
-	RegisterHam(Ham_Spawn, "player", "player_spawn", 1);
+	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", .post = true);
+	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", .post = false);
+	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", .post = true);
 
-	register_event("TextMsg", "restart_round", "a", "2&#Game_C", "2&#Game_w");
-
-	register_event("HLTV", "new_round", "a", "1=0", "2=0");
-	register_event("DeathMsg", "player_death", "a");
-
-	register_message(get_user_msgid("SayText"), "say_text");
 	register_message(get_user_msgid("ScoreAttrib"), "handle_status");
 	register_message(get_user_msgid("AmmoX"), "handle_ammo");
 
@@ -88,6 +74,7 @@ public plugin_end()
 
 public amxbans_admin_connect(id)
 	client_authorized_post(id);
+
 
 public client_authorized(id)
 	client_authorized_post(id);
@@ -192,7 +179,7 @@ public client_infochanged(id)
 	if (get_bit(id, VIP)) {
 		new playerName[32], newName[32], tempName[32], size = ArraySize(VIPs);
 
-		get_user_info(id, "name", newName,charsmax(newName));
+		get_user_info(id, "name", newName, charsmax(newName));
 		get_user_name(id, playerName, charsmax(playerName));
 
 		if (playerName[0] && !equal(playerName, newName)) {
@@ -252,51 +239,48 @@ public show_svipmotd(id)
 	show_motd(id, motdFile, motdTitle);
 }
 
-public new_round()
-	++roundNum;
-
-public restart_round()
-	roundNum = 0;
+public CSGameRules_RestartRound_Pre()
+{
+	if(!get_member_game(m_bCompleteReset))
+		++roundNum;
+	else
+		roundNum = 1;
+}
 
 public csgo_user_login(id)
-	player_spawn(id);
+	CBasePlayer_Spawn_Post(id);
 
-public player_spawn(id)
+public CBasePlayer_Spawn_Post(id)
 {
-	if (disabled || !csgo_check_account(id)) return PLUGIN_CONTINUE;
+	if (disabled || !csgo_check_account(id))
+		return HC_CONTINUE;
 
 	remove_task(id);
 	client_authorized_post(id);
 
-	if (!is_user_alive(id) || !pev_valid(id) || !get_bit(id, VIP)) return PLUGIN_CONTINUE;
+	if (!is_user_alive(id) || !is_entity(id) || !get_bit(id, VIP))
+		return HC_CONTINUE;
 
-	if (get_user_team(id) == 2) cs_set_user_defuse(id, 1);
-
+	if (get_user_team(id) == 2) rg_give_defusekit(id, true);
+	
 	if (roundNum >= 2) {
-		strip_weapons(id, SECONDARY);
-
-		if (csgo_get_user_zeus(id)) {
-			give_item(id, zeusWeaponName);
-		}
-
-		give_item(id, "weapon_deagle");
-		give_item(id, "ammo_50ae");
-		give_item(id, "weapon_hegrenade");
+		rg_give_item(id, "weapon_deagle", GT_REPLACE);
+		rg_set_user_bpammo(id, WEAPON_DEAGLE, 35);
+		rg_give_item(id, "weapon_hegrenade");
 
 		if (get_bit(id, SVIP)) {
-			give_item(id, "weapon_flashbang");
-			give_item(id, "weapon_flashbang");
-			give_item(id, "weapon_smokegrenade");
+			rg_give_item(id, "weapon_flashbang");
+			rg_give_item(id, "weapon_flashbang");
 		}
 
-		cs_set_user_armor(id, 100, CS_ARMOR_VESTHELM);
+		rg_set_user_armor(id, 100, ARMOR_VESTHELM);
 	} else {
 		vip_menu_pistol(id);
 	}
 
 	if (roundNum >= 3) vip_menu(id);
 
-	return PLUGIN_CONTINUE;
+	return HC_CONTINUE;
 }
 
 public vip_menu(id)
@@ -307,21 +291,21 @@ public vip_menu(id)
 
 	new menu, title[64];
 
-	formatex(title, charsmax(title), "%L", id, get_bit(id, SVIP) ? "CSGO_VIP_MENU_WEAPONS_SVIP" : "CSGO_VIP_MENU_WEAPONS_VIP");
+	formatex(title, charsmax(title), ^"%L", id, get_bit(id, SVIP) ? "CSGO_VIP_MENU_WEAPONS_SVIP" : "CSGO_VIP_MENU_WEAPONS_VIP");
 	menu = menu_create(title, "vip_menu_handle");
 
-	formatex(title, charsmax(title), "%L", id, "CSGO_VIP_MENU_M4A1");
+	formatex(title, charsmax(title), ^"^5%L", id, "CSGO_VIP_MENU_M4A1");
 	menu_additem(menu, title);
 
-	formatex(title, charsmax(title), "%L", id, "CSGO_VIP_MENU_AK47");
+	formatex(title, charsmax(title), ^"^1%L", id, "CSGO_VIP_MENU_AK47");
 	menu_additem(menu, title);
 
 	if (get_bit(id, SVIP)) {
-		formatex(title, charsmax(title), "%L", id, "CSGO_VIP_MENU_AWP");
+		formatex(title, charsmax(title), ^"^2%L", id, "CSGO_VIP_MENU_AWP");
 		menu_additem(menu, title);
 	}
 
-	formatex(title, charsmax(title), "%L", id, "CSGO_MENU_EXIT");
+	formatex(title, charsmax(title), ^"%L", id, "CSGO_MENU_EXIT");
 	menu_setprop(menu, MPROP_EXITNAME, title);
 
 	menu_display(id, menu);
@@ -329,8 +313,10 @@ public vip_menu(id)
 
 public vip_menu_handle(id, menu, item)
 {
-	if (!pev_valid(id) || !is_user_alive(id) || used[id] || item == MENU_EXIT) {
+	if (!is_entity(id) || !is_user_alive(id) || used[id] || item == MENU_EXIT) {
 		menu_destroy(menu);
+		
+		remove_task(id);
 
 		return PLUGIN_HANDLED;
 	}
@@ -339,51 +325,18 @@ public vip_menu_handle(id, menu, item)
 
 	switch (item) {
 		case 0: {
-			strip_weapons(id, SECONDARY);
-
-			give_item(id, "weapon_deagle");
-			give_item(id, "ammo_50ae");
-
-			if (csgo_get_user_zeus(id)) {
-				give_item(id, zeusWeaponName);
-			}
-
-			strip_weapons(id, PRIMARY);
-
-			give_item(id, "weapon_m4a1");
-			give_item(id, "ammo_556nato");
+			rg_give_item(id, "weapon_m4a1", GT_REPLACE)
+			rg_set_user_bpammo(id, WEAPON_M4A1, 90);
 
 			client_print(id, print_center, "%L", id, "CSGO_VIP_M4A1");
 		} case 1: {
-			strip_weapons(id, SECONDARY);
-
-			give_item(id, "weapon_deagle");
-			give_item(id, "ammo_50ae");
-
-			if (csgo_get_user_zeus(id)) {
-				give_item(id, zeusWeaponName);
-			}
-
-			strip_weapons(id, PRIMARY);
-
-			give_item(id, "weapon_ak47");
-			give_item(id, "ammo_762nato");
+			rg_give_item(id, "weapon_ak47", GT_REPLACE);
+			rg_set_user_bpammo(id, WEAPON_AK47, 90);
 
 			client_print(id, print_center, "%L", id, "CSGO_VIP_AK47");
 		} case 2: {
-			strip_weapons(id, SECONDARY);
-
-			give_item(id, "weapon_deagle");
-			give_item(id, "ammo_50ae");
-
-			if (csgo_get_user_zeus(id)) {
-				give_item(id, zeusWeaponName);
-			}
-
-			strip_weapons(id, PRIMARY);
-
-			give_item(id, "weapon_awp");
-			give_item(id, "ammo_338magnum");
+			rg_give_item(id, "weapon_awp", GT_REPLACE);
+			rg_set_user_bpammo(id, WEAPON_AWP, 30);
 
 			client_print(id, print_center, "%L", id, "CSGO_VIP_AWP");
 		}
@@ -398,13 +351,14 @@ public vip_menu_handle(id, menu, item)
 
 public close_vip_menu(id)
 {
-	if (used[id] || !is_user_alive(id) || !pev_valid(id)) return PLUGIN_CONTINUE;
+	if (used[id] || !is_user_alive(id) || !is_entity(id))
+		return PLUGIN_CONTINUE;
 
 	if (!check_weapons(id)) {
 		if (get_bit(id, SVIP)) {
-			client_print_color(id, id, "^4[SVIP]^1 %L", id, "CSGO_VIP_RANDOM_WEAPONS_SVIP");
+			client_print(id, print_chat, ^"^3[^2SVIP^3] %L", id, "CSGO_VIP_RANDOM_WEAPONS_SVIP");
 		} else {
-			client_print_color(id, id, "^4[VIP]^1 %L", id, "CSGO_VIP_RANDOM_WEAPONS_VIP");
+			client_print(id, print_chat, ^"^3[^2VIP^3] %L", id, "CSGO_VIP_RANDOM_WEAPONS_VIP");
 		}
 
 		used[id] = true;
@@ -413,51 +367,18 @@ public close_vip_menu(id)
 
 		switch (random) {
 			case 0: {
-				strip_weapons(id, SECONDARY);
-
-				give_item(id, "weapon_deagle");
-				give_item(id, "ammo_50ae");
-
-				if (csgo_get_user_zeus(id)) {
-					give_item(id, zeusWeaponName);
-				}
-
-				strip_weapons(id, PRIMARY);
-
-				give_item(id, "weapon_m4a1");
-				give_item(id, "ammo_556nato");
+				rg_give_item(id, "weapon_m4a1", GT_REPLACE);
+				rg_set_user_bpammo(id, WEAPON_M4A1, 90);
 
 				client_print(id, print_center, "%L", id, "CSGO_VIP_M4A1");
 			} case 1: {
-				strip_weapons(id, SECONDARY);
-
-				give_item(id, "weapon_deagle");
-				give_item(id, "ammo_50ae");
-
-				if (csgo_get_user_zeus(id)) {
-					give_item(id, zeusWeaponName);
-				}
-
-				strip_weapons(id, PRIMARY);
-
-				give_item(id, "weapon_ak47");
-				give_item(id, "ammo_762nato");
+				rg_give_item(id, "weapon_ak47", GT_REPLACE);
+				rg_set_user_bpammo(id, WEAPON_AK47, 90);
 
 				client_print(id, print_center, "%L", id, "CSGO_VIP_AK47");
 			} case 2: {
-				strip_weapons(id, SECONDARY);
-
-				give_item(id, "weapon_deagle");
-				give_item(id, "ammo_50ae");
-
-				if (csgo_get_user_zeus(id)) {
-					give_item(id, zeusWeaponName);
-				}
-
-				strip_weapons(id, PRIMARY);
-
-				give_item(id, "weapon_awp");
-				give_item(id, "ammo_338magnum");
+				rg_give_item(id, "weapon_awp", GT_REPLACE);
+				rg_set_user_bpammo(id, WEAPON_AWP, 30);
 
 				client_print(id, print_center, "%L", id, "CSGO_VIP_AWP");
 			}
@@ -475,7 +396,7 @@ public vip_menu_pistol(id)
 
 	new menu, title[64];
 
-	formatex(title, charsmax(title), "%L", id, get_bit(id, SVIP) ? "CSGO_VIP_MENU_PISTOL_SVIP" : "CSGO_VIP_MENU_PISTOL_VIP");
+	formatex(title, charsmax(title), "%L", id, get_bit(id, SVIP) ? ^"CSGO_VIP_MENU_PISTOL_SVIP" : ^"CSGO_VIP_MENU_PISTOL_VIP");
 	menu = menu_create(title, "vip_menu_pistol_handle");
 
 	formatex(title, charsmax(title), "%L", id, "CSGO_VIP_MENU_DEAGLE");
@@ -495,8 +416,10 @@ public vip_menu_pistol(id)
 
 public vip_menu_pistol_handle(id, menu, item)
 {
-	if (!pev_valid(id) || !is_user_alive(id) || used[id] || item == MENU_EXIT) {
+	if (!is_entity(id) || !is_user_alive(id) || used[id] || item == MENU_EXIT) {
 		menu_destroy(menu);
+		
+		remove_task(id);
 
 		return PLUGIN_HANDLED;
 	}
@@ -505,36 +428,18 @@ public vip_menu_pistol_handle(id, menu, item)
 
 	switch (item) {
 		case 0: {
-			strip_weapons(id, SECONDARY);
-
-			give_item(id, "weapon_deagle");
-			give_item(id, "ammo_50ae");
-
-			if (csgo_get_user_zeus(id)) {
-				give_item(id, zeusWeaponName);
-			}
-
+			rg_give_item(id, "weapon_deagle", GT_REPLACE);
+			rg_set_user_bpammo(id, WEAPON_DEAGLE, 35);
+			
 			client_print(id, print_center, "%L", id, "CSGO_VIP_DEAGLE");
 		} case 1: {
-			strip_weapons(id, SECONDARY);
-
-			give_item(id, "weapon_usp");
-			give_item(id, "ammo_45acp");
-
-			if (csgo_get_user_zeus(id)) {
-				give_item(id, zeusWeaponName);
-			}
+			rg_give_item(id, "weapon_usp", GT_REPLACE);
+			rg_set_user_bpammo(id, WEAPON_USP, 100);
 
 			client_print(id, print_center, "%L", id, "CSGO_VIP_USP");
 		} case 2: {
-			strip_weapons(id, SECONDARY);
-
-			give_item(id, "weapon_glock18");
-			give_item(id, "ammo_9mm");
-
-			if (csgo_get_user_zeus(id)) {
-				give_item(id, zeusWeaponName);
-			}
+			rg_give_item(id, "weapon_glock18", GT_REPLACE);
+			rg_set_user_bpammo(id, WEAPON_GLOCK18, 120);
 
 			client_print(id, print_center, "%L", id, "CSGO_VIP_GLOCK");
 		}
@@ -549,13 +454,14 @@ public vip_menu_pistol_handle(id, menu, item)
 
 public close_vip_menu_pistol(id)
 {
-	if (used[id] || !is_user_alive(id) || !pev_valid(id)) return PLUGIN_CONTINUE;
+	if (used[id] || !is_user_alive(id) || !is_entity(id))
+		return PLUGIN_CONTINUE;
 
 	if (!check_weapons(id)) {
 		if (get_bit(id, SVIP)) {
-			client_print_color(id, id, "^4[SVIP]^1 %L", id, "CSGO_VIP_RANDOM_PISTOL_SVIP");
+			client_print(id, print_chat, ^"^3[^2SVIP^3] %L", id, "CSGO_VIP_RANDOM_PISTOL_SVIP");
 		} else {
-			client_print_color(id, id, "^4[VIP]^1 %L", id, "CSGO_VIP_RANDOM_PISTOL_VIP");
+			client_print(id, print_chat, ^"^3[^2VIP^3] %L", id, "CSGO_VIP_RANDOM_PISTOL_VIP");
 		}
 
 		used[id] = true;
@@ -564,36 +470,18 @@ public close_vip_menu_pistol(id)
 
 		switch (random) {
 			case 0: {
-				strip_weapons(id, SECONDARY);
-
-				give_item(id, "weapon_deagle");
-				give_item(id, "ammo_50ae");
-
-				if (csgo_get_user_zeus(id)) {
-					give_item(id, zeusWeaponName);
-				}
+				rg_give_item(id, "weapon_deagle", GT_REPLACE);
+				rg_set_user_bpammo(id, WEAPON_DEAGLE, 35);
 
 				client_print(id, print_center, "%L", id, "CSGO_VIP_DEAGLE");
 			} case 1: {
-				strip_weapons(id, SECONDARY);
-
-				give_item(id, "weapon_usp");
-				give_item(id, "ammo_45acp");
-
-				if (csgo_get_user_zeus(id)) {
-					give_item(id, zeusWeaponName);
-				}
+				rg_give_item(id, "weapon_usp", GT_REPLACE);
+				rg_set_user_bpammo(id, WEAPON_USP, 100);
 
 				client_print(id, print_center, "%L", id, "CSGO_VIP_USP");
 			} case 2: {
-				strip_weapons(id, SECONDARY);
-
-				give_item(id, "weapon_glock18");
-				give_item(id, "ammo_9mm");
-
-				if (csgo_get_user_zeus(id)) {
-					give_item(id, zeusWeaponName);
-				}
+				rg_give_item(id, "weapon_glock18", GT_REPLACE);
+				rg_set_user_bpammo(id, WEAPON_GLOCK18, 120);
 
 				client_print(id, print_center, "%L", id, "CSGO_VIP_GLOCK");
 			}
@@ -603,27 +491,42 @@ public close_vip_menu_pistol(id)
 	return PLUGIN_CONTINUE;
 }
 
-public player_death()
+public CBasePlayer_Killed_Post(const victim, killer, iGib)
 {
-	new killer = read_data(1), victim = read_data(2), headShot = read_data(3);
+	if (!disabled) return HC_CONTINUE;
+	
+	if (!is_user_connected(killer)) return HC_CONTINUE;
+	
+	if (victim == killer || get_member(victim, m_bKilledByBomb)) return HC_CONTINUE;
+	
+	//if (get_member(victim, m_iTeam) == get_member(killer, m_iTeam)) return HC_CONTINUE; // FFA
+	
+	if (!get_bit(killer, VIP)) return HC_CONTINUE;
+	
+	static Float:killer_HP, Float:HP_HS, Float:HP_BODY;
+	killer_HP = get_entvar(killer, var_health);
+	HP_HS = 10.0;
+	HP_BODY = 5.0;
+   
+	if(!(killer_HP < 100.0)) return HC_CONTINUE;
+		
+	if (get_member(victim, m_bHeadshotKilled)) {
+		set_hudmessage(38, 218, 116, 0.50, 0.35, 0, 0.0, 1.0, 0.0, 0.0);
+		show_hudmessage(killer, "%L", killer, "CSGO_VIP_KILL_HS", get_bit(killer, SVIP) ? (floatround(HP_HS) + 5) : floatround(HP_HS));
 
-	if (get_bit(killer, VIP) && is_user_alive(killer) && get_user_team(killer) != get_user_team(victim) && !disabled) {
-		if (headShot) {
-			set_dhudmessage(38, 218, 116, 0.50, 0.35, 0, 0.0, 1.0, 0.0, 0.0);
-			show_dhudmessage(killer, "%L", killer, "CSGO_VIP_KILL_HS");
+		set_entvar(killer, var_health, ((killer_HP) > 100.00) ? (get_bit(killer, SVIP) ? (HP_HS + 5.0) : HP_HS) : killer_HP);
 
-			set_user_health(killer, get_user_health(killer) > 100 ? get_user_health(killer) + 15 : min(get_user_health(killer) + 15, 100));
+		rg_add_account(killer, 350, AS_ADD);
+	} else	{
+		set_hudmessage(255, 212, 0, 0.50, 0.31, 0, 0.0, 1.0, 0.0, 0.0);
+		show_hudmessage(killer, "%L", killer, "CSGO_VIP_KILL", get_bit(killer, SVIP) ? (floatround(HP_BODY) + 5) : floatround(HP_BODY));
 
-			cs_set_user_money(killer, cs_get_user_money(killer) + 350);
-		} else  {
-			set_dhudmessage(255, 212, 0, 0.50, 0.31, 0, 0.0, 1.0, 0.0, 0.0);
-			show_dhudmessage(killer, "%L", killer, "CSGO_VIP_KILL");
+		set_entvar(killer, var_health, ((killer_HP) > 100.00) ? (get_bit(killer, SVIP) ? (HP_BODY + 5.0) : HP_BODY) : killer_HP);
 
-			set_user_health(killer, get_user_health(killer) > 100 ? get_user_health(killer) + 10 : min(get_user_health(killer) + 10, 100));
-
-			cs_set_user_money(killer, cs_get_user_money(killer) + 200);
-		}
+		rg_add_account(killer, 200, AS_ADD);
 	}
+	
+	return HC_CONTINUE;
 }
 
 public show_vips(id)
@@ -636,12 +539,12 @@ public show_vips(id)
 		add(tempMessage, charsmax(tempMessage), playerName);
 
 		if (i == size - 1) add(tempMessage, charsmax(tempMessage), ".");
-		else add(tempMessage, charsmax(tempMessage), ", ");
+		else add(tempMessage, charsmax(tempMessage), ^", ^7");
 	}
 
 	formatex(message, charsmax(message), tempMessage);
 
-	client_print_color(id, id, "^4%s", message);
+	client_print(id, print_chat, ^"%s", message);
 
 	return PLUGIN_CONTINUE;
 }
@@ -656,12 +559,12 @@ public show_svips(id)
 		add(tempMessage, charsmax(tempMessage), playerName);
 
 		if (i == size - 1) add(tempMessage, charsmax(tempMessage), ".");
-		else add(tempMessage, charsmax(tempMessage), ", ");
+		else add(tempMessage, charsmax(tempMessage), ^", ^7");
 	}
 
 	formatex(message, charsmax(message), tempMessage);
 
-	client_print_color(id, id, "^4%s", message);
+	client_print(id, print_chat, ^"%s", message);
 
 	return PLUGIN_CONTINUE;
 }
@@ -684,14 +587,17 @@ public handle_say(id)
 		remove_quotes(text);
 
 		if (text[0] == '*' && text[1]) {
-			new playerName[32];
+			formatex(message, charsmax(message), "^3(VIP CHAT) ^7%n: ^3%s", text[1]);
 
-			get_user_name(id, playerName, charsmax(playerName));
-
-			formatex(message, charsmax(message), "^4(VIP CHAT) ^3%s: ^4%s", playerName, text[1]);
-
-			for (new i = 1; i <= MAX_PLAYERS; i++) {
-				if (is_user_connected(i) && get_bit(i, VIP)) client_print_color(i, i, "^4%s", message);
+			if (is_user_alive(id)) {
+				for (new i = 1; i <= MAX_PLAYERS; i++) {
+					if (is_user_alive(i) && get_bit(i, VIP)) client_print(i, print_chat, ^"%s", message);
+				}
+			}
+			else {
+				for (new i = 1; i <= MAX_PLAYERS; i++) {
+					if (!is_user_alive(i) && get_bit(i, VIP)) client_print(i, print_chat, ^"%s", message);
+				}
 			}
 
 			return PLUGIN_HANDLED_MAIN;
@@ -701,112 +607,17 @@ public handle_say(id)
 	return PLUGIN_CONTINUE;
 }
 
-public say_text(msgId,msgDest,msgEnt)
-{
-	new id = get_msg_arg_int(1);
-
-	if (prefixEnabled && is_user_connected(id) && get_bit(id, VIP)) {
-		new tempMessage[192], message[192], chatPrefix[16], playerName[32];
-
-		get_msg_arg_string(2, tempMessage, charsmax(tempMessage));
-
-		formatex(chatPrefix, charsmax(chatPrefix), "%s", get_bit(id, SVIP) ? "^4[SVIP]" : "^4[VIP]");
-
-		if (!equal(tempMessage, "#Cstrike_Chat_All")) {
-			add(message, charsmax(message), chatPrefix);
-			add(message, charsmax(message), " ");
-			add(message, charsmax(message), tempMessage);
-		} else {
-	        get_user_name(id, playerName, charsmax(playerName));
-
-	        get_msg_arg_string(4, tempMessage, charsmax(tempMessage));
-	        set_msg_arg_string(4, "");
-
-	        add(message, charsmax(message), chatPrefix);
-	        add(message, charsmax(message), "^3 ");
-	        add(message, charsmax(message), playerName);
-	        add(message, charsmax(message), "^1 : ");
-	        add(message, charsmax(message), tempMessage);
-		}
-
-		set_msg_arg_string(2, message);
-	}
-
-	return PLUGIN_CONTINUE;
-}
-
 public handle_ammo(iMsgId, iMsgDest, id)
 {
-	new ammoID = get_msg_arg_int(1);
+	if (!get_bit(id, SVIP))
+		return PLUGIN_CONTINUE;
+	
+	new iWeapon = get_user_weapon(id);
 
-	if (is_user_alive(id) && ammoID && ammoID <= ammo_9mm && get_bit(id, SVIP)) {
-		new ammo = maxBPAmmo[ammoID];
-
-		if (get_msg_arg_int(2) < ammo && pev_valid(id) == VALID_PDATA) {
-			set_msg_arg_int(2, ARG_BYTE, ammo);
-			set_pdata_int(id, OFFSET_AMMO + ammoID, ammo, OFFSET_PLAYER_LINUX);
-		}
-	}
-}
-
-stock strip_weapons(id, type, bool:switchIfActive = true)
-{
-	new result;
-
-	if (is_user_alive(id)) {
-		new entity, weapon;
-
-		while ((weapon = get_weapon_from_slot(id, type, entity)) > 0) {
-			result = ham_strip_user_weapon(id, weapon, type, switchIfActive);
-		}
-	}
-
-	return result;
-}
-
-stock get_weapon_from_slot(id, slot, &entity)
-{
-	if (!( 1 <= slot <= 5 ) || pev_valid(id) != VALID_PDATA) return 0;
-
-	entity = get_pdata_cbase(id, OFFSET_ITEM_SLOT + slot, OFFSET_PLAYER_LINUX);
-
-	return (entity > 0) ? get_pdata_int(entity, OFFSET_ID, OFFSET_ITEM_LINUX) : 0;
-}
-
-stock ham_strip_user_weapon(id, weaponId, slot = 0, bool:switchIfActive = true)
-{
-	new weapon;
-
-	if (!slot) {
-		slot = weaponSlots[weaponId];
-	}
-
-	if (pev_valid(id) != VALID_PDATA) return 0;
-
-	weapon = get_pdata_cbase(id, OFFSET_ITEM_SLOT + slot, OFFSET_PLAYER_LINUX);
-
-	while (weapon > 0) {
-		if (get_pdata_int(weapon, OFFSET_ID, OFFSET_ITEM_LINUX) == weaponId) {
-			break;
-		}
-
-		weapon = get_pdata_cbase(weapon, OFFSET_NEXT, OFFSET_ITEM_LINUX);
-	}
-
-	if (weapon > 0) {
-		if (switchIfActive && get_pdata_cbase(id, OFFSET_ACTIVE_ITEM, OFFSET_PLAYER_LINUX) == weapon) {
-			ExecuteHamB(Ham_Weapon_RetireWeapon, weapon);
-		}
-
-		if (ExecuteHamB(Ham_RemovePlayerItem, id, weapon)) {
-			user_has_weapon(id, weaponId, 0);
-			ExecuteHamB(Ham_Item_Kill, weapon);
-
-			return 1;
-		}
-	}
-
-	return 0;
+	if(iWeapon && iWeapon != CSW_KNIFE && iWeapon != CSW_HEGRENADE && iWeapon != CSW_FLASHBANG && iWeapon != CSW_SMOKEGRENADE)
+		rg_set_user_bpammo(id, any:iWeapon, rg_get_weapon_info(iWeapon, WI_MAX_ROUNDS));
+	
+	return PLUGIN_CONTINUE;
 }
 
 stock bool:check_weapons(id)
@@ -827,12 +638,9 @@ stock check_map()
 	new mapPrefixes[][] = {
 		"aim_",
 		"awp_",
-		"awp4one",
 		"fy_" ,
 		"cs_deagle5" ,
 		"fun_allinone",
-		"1hp_he",
-		"css_india"
 	};
 
 	new mapName[32];
@@ -843,8 +651,6 @@ stock check_map()
 		if (containi(mapName, mapPrefixes[i]) != -1) disabled = true;
 	}
 }
-
-
 
 public _csgo_get_user_vip(id)
 	return get_bit(id, VIP);
