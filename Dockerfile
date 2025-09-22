@@ -59,10 +59,6 @@ RUN curl -SL https://github.com/AMXX-pl/BasePack/releases/download/1.1.2/base_pa
 # Copy all additional files from local cstrike directory
 COPY --chown=steam:steam cstrike $HOME/hlds/cstrike
 
-# Enable Unprecacher module
-RUN echo '' >> $HOME/hlds/cstrike/addons/metamod/plugins.ini && \
-  echo 'linux addons/unprecacher/unprecacher_mm_i386.so' >> $HOME/hlds/cstrike/addons/metamod/plugins.ini
-
 # Compile plugins
 RUN cd $HOME/hlds/cstrike/addons/amxmodx/scripting && \
     chmod +x compile.sh amxxpc && \
