@@ -3,45 +3,23 @@
 #endif
 #define _csgomod_included
 
-#if !defined client_print_color || !defined MAX_NAME_LENGTH
+#if !defined MAX_NAME_LENGTH
     #error THIS VERSION IS NOT SUPPORTED! PLEASE USE AMXX 1.8.3+!
 #endif
 
-#define VERSION	"2.5.10"
-#define CHAT_PREFIX "^4[CS:GO]^1"
+// Uncomment below to enable xash3d compatibility.
+//#define XASH3D
+
+#define VERSION	"2.5.11-Lite"
+#define CHAT_PREFIX "[CS:GO]"
 #define CONSOLE_PREFIX "[CS:GO]"
 
 #define get_bit(%2,%1) (%1 & (1<<(%2&31)))
 #define set_bit(%2,%1) (%1 |= (1<<(%2&31)))
 #define rem_bit(%2,%1) (%1 &= ~(1 <<(%2&31)))
 
-#define OFFSET_ITEM_LINUX  4
-#define OFFSET_PLAYER_LINUX  5
-#define OFFSET_LAST_EVENT_CHECK 38
-#define OFFSET_PLAYER 41
-#define OFFSET_NEXT 42
-#define OFFSET_ID 43
-#define OFFSET_EMPTY_SOUND 44
-#define OFFSET_PRIMARY_ATTACK 46
-#define OFFSET_SECONDARY_ATTACK 47
-#define OFFSET_WEAPON_IDLE 48
-#define OFFSET_CLIP 51
-#define OFFSET_CLIENT_CLIP 52
-#define OFFSET_SHELL 57
-#define OFFSET_SHOTS_FIRED 64
-#define OFFSET_SILENCER 74
-#define OFFSET_EJECT 111
-#define OFFSET_MENU 205
-#define OFFSET_BUTTON_PRESSED 246
-#define OFFSET_ITEM_SLOT 367
-#define OFFSET_ACTIVE_ITEM 373
-#define OFFSET_AMMO 376
-#define OFFSET_C4 385
-
-#define VALID_PDATA 2
-
 #define SAVE_NAME 0
-#define SAVE_STEAM_ID 1
+#define SAVE_AUTH_ID 1
 
 #define weapon_entity(%0) (get_pdata_int(%0, OFFSET_ID, OFFSET_ITEM_LINUX))
 
@@ -84,6 +62,17 @@ native csgo_add_money(id, Float:money);
  * @noreturn
  */
 native csgo_set_money(id, Float:money);
+
+/**
+ * Retrieves location of current player.
+ *
+ * @param id        Player index
+ * @param data      Buffer to copy text to
+ * @param lenth     Maximum buffer size
+ *
+ * @noreturn
+ */
+native csgo_get_user_country(id, data[], legth);
 
 /**
  * Returns id of current player operation.
@@ -142,57 +131,6 @@ native csgo_get_menu(id);
  * @return          1 if player has visible hud 0 otherwise
  */
 native csgo_get_hud(id);
-
-/**
- * Returns player skin id for current weapon.
- *
- * @param id        Player index
- *
- * @return          Skin index -1 if none
- */
-native csgo_get_skin(id);
-
-/**
- * Returns player skin id for given weapon.
- *
- * @param id        Player index
- * @param weapon    Weapon index
- *
- * @return          Skin index -1 if none
- */
-native csgo_get_weapon_skin(id, weapon);
-
-/**
- * Retrieves name of skin with given id.
- *
- * @param id        Player index (for multilang purpose)
- * @param skin      Skin index
- * @param data      Buffer to copy text to
- * @param lenth     Maximum buffer size
- *
- * @noreturn
- */
-native csgo_get_skin_name(id, skin, data[], length);
-
-/**
- * Retrieves name of skin for current player weapon.
- *
- * @param id        Player index
- * @param data      Buffer to copy text to
- * @param lenth     Maximum buffer size
- *
- * @noreturn
- */
-native csgo_get_current_skin_name(id, data[], length);
-
-/**
- * Gives player a random skin.
- *
- * @param id        Player index
- *
- * @noreturn
- */
-native csgo_give_random_skin(id);
 
 /**
  * Retrieves player clan id.
@@ -294,24 +232,6 @@ native csgo_get_user_vip(id);
 native csgo_get_user_svip(id);
 
 /**
- * Checks if player has zeus.
- *
- * @param id        Player index
- *
- * @return          1 if player has zeus 0 otherwise
- */
-native csgo_get_user_zeus(id);
-
-/**
- * Checks if player has molotov.
- *
- * @param id        Player index
- *
- * @return          1 if player has molotov 0 otherwise
- */
-native csgo_get_user_molotov(id);
-
-/**
  * Checks if player count meets the required number
  * after the filtering is done by csgo_min_player_filter
  *
@@ -384,5 +304,5 @@ stock cmd_execute(id, const text[], any:...)
 	write_string(message);
 	message_end();
 
-	engclient_cmd(id, message);
+	client_cmd(id, message);
 }
