@@ -6,15 +6,13 @@
 
 new Array:titles, Array:commands;
 
-new const menuCommands[][] = { "say /menu", "say_team /menu", "menu", "say /komendy", "say_team /komendy", "say /commands", "say_team /commands" };
+new const menuCommands[][] = { "say /menu", "say_team /menu", "menu" };
 
 public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR);
 
 	for (new i; i < sizeof menuCommands; i++) register_clcmd(menuCommands[i], "server_menu");
-
-	register_clcmd("showbriefing", "server_menu");
 }
 
 public plugin_cfg()
