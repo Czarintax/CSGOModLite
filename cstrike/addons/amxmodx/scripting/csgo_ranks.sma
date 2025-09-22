@@ -45,17 +45,17 @@ new const rankElo[MAX_RANKS + 1] = {
 	160,
 	180,
 	200,
+	215,
 	230,
+	245,
 	260,
+	275,
 	290,
-	330,
+	315,
+	340,
 	370,
 	410,
-	460,
-	520,
-	580,
-	650,
-	720
+	450
 };
 #if defined XASH3D
 new const rankColor[MAX_RANKS + 1][] = {
@@ -502,9 +502,11 @@ public load_hud_handle(failState, Handle:query, error[], errorNum, playerId[], d
 
 		SQL_ThreadQuery(sql, "ignore_handle", queryData);
 	}
-
+#if defined XASH3D
 	if (!task_exists(id + TASK_HUD)) set_task(1.0, "display_hud", id + TASK_HUD, .flags = "b");
-
+#else
+	if (!task_exists(id + TASK_HUD)) set_task(0.1, "display_hud", id + TASK_HUD, .flags = "b");
+#endif
 	set_bit(id, hudLoaded);
 }
 
@@ -662,9 +664,9 @@ public display_hud(id)
 
 	if (hudAccount) {
 		if (csgo_get_user_svip(target)) {
-			formatex(account, charsmax(account), "%L^n", id, "CSGO_RANKS_HUD_SUPERVIP");
+			formatex(account, charsmax(account), "%L", id, "CSGO_RANKS_HUD_SUPERVIP");
 		} else if (csgo_get_user_vip(target)) {
-			formatex(account, charsmax(account), "%L^n", id, "CSGO_RANKS_HUD_VIP");
+			formatex(account, charsmax(account), "%L", id, "CSGO_RANKS_HUD_VIP");
 		} else {
 			formatex(account, charsmax(account), "%L", id, "CSGO_RANKS_HUD_DEFAULT");
 		}
@@ -673,21 +675,13 @@ public display_hud(id)
 	}
 
 	if (hudClan) {
-		if (csgo_get_user_clan(target)) {
-			format(clan, charsmax(clan), "%L", id, "CSGO_RANKS_HUD_CLAN", clan);
-		} else {
-			clan = "";
-		}
+		format(clan, charsmax(clan), "%L", id, "CSGO_RANKS_HUD_CLAN", clan);
 	} else {
 		clan = "";
 	}
 	
 	if (hudOperation) {
-		if (csgo_get_user_operation(target) > -1) {
-			format(operation, charsmax(operation), "%L", id, "CSGO_RANKS_HUD_OPERATION", operation);
-		} else {
-			operation = "";
-		}
+		format(operation, charsmax(operation), "%L", id, "CSGO_RANKS_HUD_OPERATION", operation);
 	} else {
 		operation = "";
 	}
@@ -970,7 +964,7 @@ public check_time(id)
 	else {
 		unix_to_time(playerData[id][LAST_VISIT], Year, Month, Day, visitHour, visitMinutes, visitSeconds, UT_TIMEZONE_SERVER);
 
-		if (visitYear == Year && visitMonth == Month && visitDay == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_TODAY", visitHour, visitMinutes);
+		if (visitYear == Year && visitMonth == Month && visitDay == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_TODAY", id, visitHour, visitMinutes);
 		else if (visitYear == Year && visitMonth == Month && (visitDay - 1) == Day) client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_YESTERDAY", visitHour, visitMinutes);
 		else client_print_color(id, id, "%s %L", CHAT_PREFIX, id, "CSGO_RANKS_VISIT_BEFORE", visitHour, visitMinutes, Day, Month, Year);
 	}
@@ -1095,7 +1089,7 @@ public cmd_topranks(id)
 
 	return PLUGIN_HANDLED;
 }
-
+#if defined XASH3D
 public show_topranks(failState, Handle:query, error[], errorNum, playerId[], dataSize)
 {
 	if (failState) {
@@ -1135,7 +1129,53 @@ public show_topranks(failState, Handle:query, error[], errorNum, playerId[], dat
 
 	return PLUGIN_HANDLED;
 }
+#else
+public show_topranks(failState, Handle:query, error[], errorNum, playerId[], dataSize)
+{
+	if (failState) {
+		log_to_file("csgo-error.log", "[CS:GO Ranks] SQL error: %s (%d)", error, errorNum);
 
+		return PLUGIN_HANDLED;
+	}
+
+	static topData[2048], name[32], nick[16], ranks[16], points[16], Float:elo, rank, topLength, place;
+
+	topLength = 0, place = 0;
+
+	new id = playerId[0];
+
+	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
+	formatex(ranks, charsmax(ranks), "%L", id, "CSGO_RANKS_TOP_RANK");
+	formatex(points, charsmax(points), "%L", id, "CSGO_RANKS_TOP_ELO");
+
+	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
+	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %13s %4s^n", "#", nick, ranks, points);
+
+	while (SQL_MoreResults(query)) {
+		place++;
+
+		SQL_ReadResult(query, 0, name, charsmax(name));
+
+		replace_all(name, charsmax(name), "<", "");
+		replace_all(name, charsmax(name), ">", "");
+
+		SQL_ReadResult(query, 1, elo);
+
+		rank = SQL_ReadResult(query, 2);
+
+		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %1s %12.2f^n", place, name, rankName[rank], elo);
+		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %2s %12.2f^n", place, name, rankName[rank], elo);
+
+		SQL_NextRow(query);
+	}
+
+	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_RANKS");
+
+	show_motd(id, topData, name);
+
+	return PLUGIN_HANDLED;
+}
+#endif
 public cmd_time(id)
 {
 	new queryData[192], playerId[1];
@@ -1190,7 +1230,7 @@ public cmd_toptime(id)
 
 	SQL_ThreadQuery(sql, "show_toptime", queryData, playerId, sizeof(playerId));
 }
-
+#if defined XASH3D
 public show_toptime(failState, Handle:query, error[], errorNum, playerId[], dataSize)
 {
 	if (failState) {
@@ -1233,14 +1273,67 @@ public show_toptime(failState, Handle:query, error[], errorNum, playerId[], data
 
 		SQL_NextRow(query);
 	}
+	
+	show_motd(id, topData);
+
+	return PLUGIN_HANDLED;
+}
+#else
+public show_toptime(failState, Handle:query, error[], errorNum, playerId[], dataSize)
+{
+	if (failState) {
+		log_to_file("csgo-error.log", "[CS:GO Ranks] SQL error: %s (%d)", error, errorNum);
+
+		return PLUGIN_HANDLED;
+	}
+
+	static topData[2048], name[32], nick[16], time[16], topLength, place, seconds, minutes, hours;
+
+	topLength = 0, place = 0;
+
+	new id = playerId[0];
+
+	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
+	formatex(time, charsmax(time), "%L", id, "CSGO_RANKS_TOP_TIME");
+
+	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
+	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %9s^n", "#", nick, time);
+
+	while (SQL_MoreResults(query)) {
+		place++;
+
+		SQL_ReadResult(query, 0, name, charsmax(name));
+
+		replace_all(name, charsmax(name), "<", "");
+		replace_all(name, charsmax(name), ">", "");
+
+		seconds = SQL_ReadResult(query, 1);
+		minutes = 0;
+		hours = 0;
+
+		while (seconds >= 60) {
+			seconds -= 60;
+			minutes++;
+		}
+
+		while (minutes >= 60) {
+			minutes -= 60;
+			hours++;
+		}
+
+		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %0ih %1imin %1is^n", place, name, hours, minutes, seconds);
+		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %1ih %1imin %1is^n", place, name, hours, minutes, seconds);
+
+		SQL_NextRow(query);
+	}
 
 	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_TIME");
-	
+
 	show_motd(id, topData, name);
 
 	return PLUGIN_HANDLED;
 }
-
+#endif
 public cmd_medals(id)
 {
 	new queryData[192], playerId[1];
@@ -1285,7 +1378,7 @@ public cmd_topmedals(id)
 
 	return PLUGIN_HANDLED;
 }
-
+#if defined XASH3D
 public show_topmedals(failState, Handle:query, error[], errorNum, playerId[], dataSize)
 {
 	if (failState) {
@@ -1322,14 +1415,61 @@ public show_topmedals(failState, Handle:query, error[], errorNum, playerId[], da
 		
 		SQL_NextRow(query);
 	}
-	
+
+	show_motd(id, topData);
+
+	return PLUGIN_HANDLED;
+}
+#else
+public show_topmedals(failState, Handle:query, error[], errorNum, playerId[], dataSize)
+{
+	if (failState) {
+		log_to_file("csgo-error.log", "[CS:GO Ranks] SQL error: %s (%d)", error, errorNum);
+
+		return PLUGIN_HANDLED;
+	}
+
+	static topData[2048], name[32], nameTitle[16], sumTitle[16], goldTitle[16], silverTitle[16], bronzeTitle[16], topLength, place, gold, silver, bronze, medals;
+
+	topLength = 0, place = 0;
+
+	new id = playerId[0];
+
+	formatex(nameTitle, charsmax(nameTitle), "%L", id, "CSGO_RANKS_TOP_NICK");
+	formatex(sumTitle, charsmax(sumTitle), "%L", id, "CSGO_RANKS_TOP_SUM");
+	formatex(goldTitle, charsmax(goldTitle), "%L", id, "CSGO_RANKS_TOP_GOLD");
+	formatex(silverTitle, charsmax(silverTitle), "%L", id, "CSGO_RANKS_TOP_SILVER");
+	formatex(bronzeTitle, charsmax(bronzeTitle), "%L", id, "CSGO_RANKS_TOP_BRONZE");
+
+	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
+	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %6s %8s %8s %5s^n", "#", nameTitle, goldTitle, silverTitle, bronzeTitle, sumTitle);
+
+	while (SQL_MoreResults(query)) {
+		place++;
+
+		SQL_ReadResult(query, 0, name, charsmax(name));
+
+		replace_all(name, charsmax(name), "<", "");
+		replace_all(name, charsmax(name), ">", "");
+
+		gold = SQL_ReadResult(query, 1);
+		silver = SQL_ReadResult(query, 2);
+		bronze = SQL_ReadResult(query, 3);
+		medals = SQL_ReadResult(query, 4);
+
+		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %2d %7d %8d %7d^n", place, name, gold, silver, bronze, medals);
+		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %3d %7d %8d %7d^n", place, name, gold, silver, bronze, medals);
+
+		SQL_NextRow(query);
+	}
+
 	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_MEDALS");
 
 	show_motd(id, topData, name);
 
 	return PLUGIN_HANDLED;
 }
-
+#endif
 public cmd_stats(id)
 {
 	new queryData[192], playerId[1];
@@ -1381,7 +1521,7 @@ public cmd_topstats(id)
 
 	return PLUGIN_HANDLED;
 }
-
+#if defined XASH3D
 public show_topstats(failState, Handle:query, error[], errorNum, playerId[], dataSize)
 {
 	if (failState) {
@@ -1421,7 +1561,55 @@ public show_topstats(failState, Handle:query, error[], errorNum, playerId[], dat
 
 	return PLUGIN_HANDLED;
 }
+#else
+public show_topstats(failState, Handle:query, error[], errorNum, playerId[], dataSize)
+{
+	if (failState) {
+		log_to_file("csgo-error.log", "[CS:GO Ranks] SQL error: %s (%d)", error, errorNum);
 
+		return PLUGIN_HANDLED;
+	}
+
+	static topData[2048], name[32], nick[16], killsTitle[16], assistsTitle[16], deathsTitle[16], topLength, place, kills, headShots, assists, deaths;
+
+	topLength = 0, place = 0;
+
+	new id = playerId[0];
+
+	formatex(nick, charsmax(nick), "%L", id, "CSGO_RANKS_TOP_NICK");
+	formatex(killsTitle, charsmax(killsTitle), "%L", id, "CSGO_RANKS_TOP_KILLS");
+	formatex(assistsTitle, charsmax(assistsTitle), "%L", id, "CSGO_RANKS_TOP_ASSISTS");
+	formatex(deathsTitle, charsmax(deathsTitle), "%L", id, "CSGO_RANKS_TOP_DEATHS");
+
+	topLength = format(topData, charsmax(topData), "<body bgcolor=#000000><font color=#FFB000><pre>");
+	topLength += format(topData[topLength], charsmax(topData) - topLength, "%1s %-22.22s %19s %12s %4s^n", "#", nick, killsTitle, assistsTitle, deathsTitle);
+
+	while (SQL_MoreResults(query)) {
+		place++;
+
+		SQL_ReadResult(query, 0, name, charsmax(name));
+
+		replace_all(name, charsmax(name), "<", "");
+		replace_all(name, charsmax(name), ">", "");
+
+		kills = SQL_ReadResult(query, 1);
+		headShots = SQL_ReadResult(query, 2);
+		assists = SQL_ReadResult(query, 3);
+		deaths = SQL_ReadResult(query, 4);
+
+		if (place >= 10) topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %1d (%i HS) %12d %12d^n", place, name, kills, headShots, assists, deaths);
+		else topLength += format(topData[topLength], charsmax(topData) - topLength, "%1i %-22.22s %2d (%i HS) %12d %12d^n", place, name, kills, headShots, assists, deaths);
+
+		SQL_NextRow(query);
+	}
+
+	formatex(name, charsmax(name), "%L", id, "CSGO_RANKS_TOP15_STATS");
+
+	show_motd(id, topData, name);
+
+	return PLUGIN_HANDLED;
+}
+#endif
 public show_icon(id)
 {
 	new target = read_data(2);

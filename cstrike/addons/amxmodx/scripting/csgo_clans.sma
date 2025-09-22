@@ -20,9 +20,11 @@ enum _:playerInfo { NAME[32], SAFE_NAME[64], AUTH_ID[65], CLAN, CHOSEN_ID, WAR_F
 
 new playerData[MAX_PLAYERS + 1][playerInfo], Handle:sql, bool:sqlConnected, Array:csgoClans, Array:csgoWars, Handle:connection, bool:end, info, loaded,
 	Float:createFee, Float:joinFee, membersStart, levelMax, Float:levelCost, Float:nextLevelCost, membersPerLevel, saveType;
-#if defined CHAT_PREFIX	
+/*
+#if defined CHAT_PREFIX
 native cm_set_prefix(const player, const prefix[]);
 #endif
+*/
 public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR);
@@ -693,7 +695,7 @@ public invite_menu(id)
 
 public invite_menu_handle(id, menu, item)
 {
-	if (!is_user_connected(id)  || !playerData[id][CLAN] || end)
+	if (!is_user_connected(id)	|| !playerData[id][CLAN] || end)
 		return PLUGIN_HANDLED;
 
 	if (item == MENU_EXIT) {
@@ -2630,15 +2632,16 @@ public load_clan_data_handle(failState, Handle:query, error[], errorNum, tempId[
 		}
 
 		playerData[id][CLAN] = csgoClan[CLAN_ID];
-		
-#if defined CHAT_PREFIX
+		/*
+		#if defined CHAT_PREFIX
 		if(!(get_user_flags(id) & ADMIN_MENU) && is_user_alive(id)) {
 			new prefix[32];
 			get_clan_info(playerData[id][CLAN], CLAN_NAME, prefix, charsmax(prefix));
 			format(prefix, charsmax(prefix), ^"[%s^7] ", prefix);
 			cm_set_prefix(id, prefix);
 		}
-#endif
+		#endif
+		*/
 		new status = SQL_ReadResult(query, SQL_FieldNameToNum(query, "flag"));
 
 		switch (saveType) {
@@ -2738,11 +2741,11 @@ public _csgo_get_clan_name(clanId, dataReturn[], dataLength)
 public _csgo_get_user_clan_name(id, dataReturn[], dataLength)
 {
 	param_convert(2);
-	/*
+	
 	if (!playerData[id][CLAN]) {
 		static clanName[16];
 		
-		//id = get_entvar(id, var_iuser2); // player lang
+		id = get_entvar(id, var_iuser2); // player lang
 
 		formatex(clanName, charsmax(clanName), "%L", id, "CSGO_CLANS_NONE");
 
@@ -2750,7 +2753,7 @@ public _csgo_get_user_clan_name(id, dataReturn[], dataLength)
 
 		return;
 	}
-	*/
+	
 	get_clan_info(playerData[id][CLAN], CLAN_NAME, dataReturn, dataLength);
 }
 

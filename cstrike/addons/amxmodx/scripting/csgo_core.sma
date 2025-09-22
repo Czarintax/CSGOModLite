@@ -393,7 +393,7 @@ public load_data(id)
 
 	switch (saveType) {
 		case SAVE_NAME: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_data` WHERE `name` = ^"%s^" LIMIT 1;", playerData[id][SAFE_NAME]);
-		case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_data` WHERE `auth` = ^"%s^" LIMIT 1;", playerData[id][AUTH_ID]);
+		case SAVE_AUTH_ID: formatex(queryData, charsmax(queryData), "SELECT * FROM `csgo_data` WHERE `authid` = ^"%s^" LIMIT 1;", playerData[id][AUTH_ID]);
 	}
 
 	SQL_ThreadQuery(sql, "load_data_handle", queryData, playerId, sizeof(playerId));

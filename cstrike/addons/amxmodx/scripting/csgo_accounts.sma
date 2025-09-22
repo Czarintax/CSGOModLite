@@ -208,7 +208,7 @@ public account_menu(id)
 	menu_additem(menu, title, _, _, callback);
 
 	if (playerData[id][STATUS] >= LOGGED) {
-		formatex(title, charsmax(title), ^"^1%L", id, "CSGO_MENU_EXIT");
+		formatex(title, charsmax(title), "%L", id, "CSGO_MENU_EXIT");
 		
 		menu_setprop(menu, MPROP_EXITNAME, title);
 	} else {
